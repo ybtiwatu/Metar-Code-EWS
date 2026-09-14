@@ -1,0 +1,70 @@
+{% extends "layout.html" %}
+
+{% block title %}Weather Analysis — METAR Auto Dashboard{% endblock %}
+
+{% block nav_active_weather %}active{% endblock %}
+
+{% block content %}
+<div class="card fade-in">
+    <div class="card-header">
+        <h3 class="card-title"><span class="icon">🌩️</span> Weather Analysis</h3>
+        <span class="text-muted" style="font-size:0.8rem">Station: {{ station }}</span>
+    </div>
+    <div style="margin-bottom: var(--space-md); color: var(--text-secondary); font-size: 0.9rem;">
+        Detailed analysis of current weather phenomena, specifically tracking aviation hazards 
+        like thunderstorms and heavy precipitation.
+    </div>
+</div>
+
+<!-- ========== THUNDERSTORM MODULE ========== -->
+<div class="card ts-module fade-in" style="animation-delay:0.1s">
+    <div class="card-header">
+        <h3 class="card-title"><span class="icon">🌩️</span> Thunderstorm Detection</h3>
+    </div>
+    <div class="ts-status clear" id="tsStatus">
+        <span>✅</span> No Thunderstorm Detected
+    </div>
+    <div class="grid-2">
+        <div class="text-center">
+            <div class="ts-radar" id="tsRadar">
+                <div class="airport-dot"></div>
+            </div>
+            <p class="text-muted mt-sm" style="font-size:0.8rem">Radar Visualization</p>
+        </div>
+        <div class="ts-params" id="tsParams">
+            <div class="ts-param-item">
+                <span class="ts-key">CB Cloud</span>
+                <span class="ts-val" id="tsCB">--</span>
+            </div>
+            <div class="ts-param-item">
+                <span class="ts-key">TS in METAR</span>
+                <span class="ts-val" id="tsInMetar">--</span>
+            </div>
+            <div class="ts-param-item">
+                <span class="ts-key">Lightning</span>
+                <span class="ts-val" id="tsLightning">--</span>
+            </div>
+            <div class="ts-param-item">
+                <span class="ts-key">Status</span>
+                <span class="ts-val" id="tsStatusText">Clear</span>
+            </div>
+        </div>
+    </div>
+    <p class="text-muted mt-md" style="font-size:0.8rem" id="tsLastUpdate">Last Update: --</p>
+</div>
+
+<!-- Future space for Visibility/Fog Analysis or other parameters -->
+
+{% endblock %}
+
+{% block extra_scripts_bottom %}
+<!-- Initialize the page state -->
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        console.log("Weather Analysis page loaded");
+        if (window.lastKnownMetar && typeof updateDOM === 'function') {
+            updateDOM(window.lastKnownMetar, "{{ station }}");
+        }
+    });
+</script>
+{% endblock %}

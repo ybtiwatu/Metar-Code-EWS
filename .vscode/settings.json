@@ -1,0 +1,18 @@
+{
+    // =========================================================================
+    // CONFIGURATION: GITHUB ACTIONS WARNINGS
+    // =========================================================================
+    
+    // UBAH KE "true" jika ingin memunculkan kembali notif warning (Diagnostic).
+    // UBAH KE "false" jika ingin menyembunyikan notif warning false-positive (CRON_TOKEN).
+    "github-actions.diagnostics.include": false,
+
+    // Mematikan refresh otomatis yang sering memicu pengecekan secret yang gagal koneksi
+    "github-actions.workflows.pinned.refresh.enabled": false,
+
+    // Menghindari error parsing YAML untuk tag khusus (seperti !secret jika ada)
+    "yaml.customTags": [
+        "!secret",
+        "tag:yaml.org,2002:js/undefined"
+    ]
+}

@@ -1,0 +1,913 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>
+        {% block title %}METAR Auto Dashboard — BMKG Aviation{% endblock %}
+    </title>
+    <meta name="description"
+        content="METAR Data Processing & Visualization Platform for BMKG Aviation Weather Monitoring">
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/favicon.png') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+
+    <!-- Dependencies -->
+    <script defer src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script defer src="https://cdn.plot.ly/plotly-2.30.0.min.js"></script>
+    <script defer src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/vanta@latest/dist/vanta.fog.min.js"></script>
+
+    {% block head %}{% endblock %}
+</head>
+
+<body>
+
+    <div class="rain front-row" id="rainFront"></div>
+    <div class="rain back-row" id="rainBack"></div>
+
+    <!-- ============================================
+         FOG / MIST / HAZE EFFECT CONTAINER
+         ============================================ -->
+    <div class="fog-container" id="fogContainer"></div>
+
+    <!-- Fog Indicator Badge -->
+    <div class="fog-indicator" id="fogIndicator">
+        <span class="fog-indicator-icon">🌫️</span>
+        <span class="fog-indicator-text" id="fogIndicatorText">FOG DETECTED</span>
+    </div>
+
+    <!-- Rain Indicator Badge -->
+    <div class="rain-indicator" id="rainIndicator">
+        <span class="rain-indicator-icon">🌧️</span>
+        <span class="rain-indicator-text" id="rainIndicatorText">RAIN DETECTED</span>
+    </div>
+
+    <audio id="lowVisSound" src="{{ url_for('static', filename='alarm.mp3') }}" preload="auto"></audio>
+    <audio id="newDataSound" src="{{ url_for('static', filename='notify.mp3') }}" preload="auto"></audio>
+    <audio id="validationErrorSound" src="{{ url_for('static', filename='metarsalah.mp3') }}" preload="auto"></audio>
+    <!-- <audio id="staleDataSound" src="{{ url_for('static', filename='metartelat.mp3') }}" preload="auto"></audio> -->
+
+    <!-- Overlay untuk mobile sidebar -->
+    <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
+
+    <div class="app-layout" id="appLayout">
+
+        <!-- ========== HEADER ========== -->
+        <header class="app-header">
+            <div class="header-left">
+                <button class="sidebar-toggle" id="sidebarToggle" title="Toggle Sidebar">☰</button>
+                <img src="{{ url_for('static', filename='images/BMKG_LOGO.png') }}" alt="BMKG Logo" class="header-logo"
+                    width="40" height="40">
+                <div class="header-title">
+                    <h1>METAR Monitoring</h1>
+                    <div class="station-badge">
+                        {% block header_badge_status %}
+                        <span id="stationBadgeStatus"
+                            style="width:8px;height:8px;border-radius:50%;background:#059669;flex-shrink:0;"></span>
+                        {% endblock %}
+                        <div class="station-text">
+                            <!-- Show station code specifically for history/parser or default name -->
+                            {% block header_station_text %}
+                            <span class="station-name">
+                                <span class="mobile-hidden">Stasiun Meteorologi Kelas I Juanda</span>
+                                <span class="desktop-hidden">BMKG<br>Juanda</span>
+                            </span>
+                            {% endblock %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="header-right">
+                <div class="wib-clock" id="wibClock">--:--:-- <small>WIB</small></div>
+                <div class="utc-clock" id="utcClock">--:--:-- <small>UTC</small></div>
+                <button class="theme-toggle mobile-hidden" id="themeToggle" onclick="toggleTheme()"
+                    title="Toggle Dark/Light Mode">🌙</button>
+                <button class="sound-toggle mobile-hidden" id="soundToggle" onclick="enableSound()">🔇 Sound</button>
+                <div class="connection-status" id="connectionStatus">
+                    <span class="connection-dot" id="connectionDot"></span>
+                    <span id="connectionText">OFFLINE</span>
+                </div>
+                <a href="/logout" class="logout-btn mobile-hidden" title="Logout">
+                    <!-- <span class="logout-icon">🚪</span> -->
+                    <span class="logout-text mobile-hidden">Logout</span>
+                </a>
+            </div>
+        </header>
+
+        <!-- ========== SIDEBAR ========== -->
+        <aside class="app-sidebar" id="appSidebar">
+            <!-- Airplane & Tower Decoration -->
+            <div class="airplane-decor-container fade-in mobile-hidden" style="animation-delay:0.08s">
+                <div class="decor-images-wrapper">
+                    <img src="{{ url_for('static', filename='images/pesawat2.png') }}" alt="Airplane Decor"
+                        class="dashboard-airplane-img" width="120" height="40">
+                    <img src="{{ url_for('static', filename='images/tower.png') }}" alt="Tower Decor"
+                        class="dashboard-tower-img" width="40" height="60">
+                </div>
+                <div class="sidebar-station-info">
+                    Stasiun No: 96935<br>ICAO ID: WARR
+                </div>
+            </div>
+
+            <nav class="sidebar-nav">
+                <div class="sidebar-section-header">Main</div>
+
+                <a href="/" class="sidebar-link {% block nav_active_dashboard %}{% endblock %}" id="nav-dashboard">
+                    <span class="icon">🏠</span>
+                    <span class="label">Dashboard</span>
+                </a>
+
+                <a href="/metar" class="sidebar-link {% block nav_active_metar %}{% endblock %}" id="nav-metar">
+                    <span class="icon">📋</span>
+                    <span class="label">METAR</span>
+                </a>
+
+                <a href="/qam_report" class="sidebar-link {% block nav_active_qam_report %}{% endblock %}"
+                    id="nav-qam-report">
+                    <span class="icon">📄</span>
+                    <span class="label">QAM/MET Report</span>
+                </a>
+
+                <div class="sidebar-section-header">Analisis & Alat</div>
+
+                <a href="/charts" class="sidebar-link {% block nav_active_charts %}{% endblock %}" id="nav-charts">
+                    <span class="icon">📈</span>
+                    <span class="label">Parameter Cuaca</span>
+                </a>
+
+                <a href="/wind_analysis" class="sidebar-link {% block nav_active_wind %}{% endblock %}" id="nav-wind">
+                    <span class="icon">🧭</span>
+                    <span class="label">Analisis Angin</span>
+                </a>
+
+                <!--<a href="/weather_analysis" class="sidebar-link {% block nav_active_weather %}{% endblock %}" id="nav-weather">
+                    <span class="icon">🌩️</span>
+                    <span class="label">Weather Analysis</span>
+                </a> -->
+
+                <div class="sidebar-section-header">Data</div>
+
+                <a href="/history_by_date" class="sidebar-link {% block nav_active_history %}{% endblock %}"
+                    id="nav-history">
+                    <span class="icon">📅</span>
+                    <span class="label">Cari Riwayat</span>
+                </a>
+
+                <a href="/manual_parser" class="sidebar-link {% block nav_active_parser %}{% endblock %}" id="nav-qam">
+                    <span class="icon">🔧</span>
+                    <span class="label">METAR Converter</span>
+                </a>
+
+                <a href="#" class="sidebar-link" id="nav-manual" onclick="openManualModal(); return false;">
+                    <span class="icon">📖</span>
+                    <span class="label">Manual Ebook</span>
+                </a>
+
+                <div class="sidebar-divider desktop-hidden"></div>
+
+                <button class="sidebar-link desktop-hidden" id="themeToggleSidebar" onclick="toggleTheme()">
+                    <span class="icon" id="themeIconSidebar">🌙</span>
+                    <span class="label" id="themeLabelSidebar">Dark Mode</span>
+                </button>
+                <button class="sidebar-link desktop-hidden" id="soundToggleSidebar" onclick="enableSound()">
+                    <span class="icon" id="soundIconSidebar">🔇</span>
+                    <span class="label" id="soundLabelSidebar">Sound OFF</span>
+                </button>
+                <a href="/logout" class="sidebar-link desktop-hidden" id="nav-logout-sidebar"
+                    style="color: var(--bmkg-danger);">
+                    <span class="label">Logout</span>
+                </a>
+            </nav>
+        </aside>
+
+        <!-- ========== MAIN CONTENT ========== -->
+        <main class="app-main">
+            <!-- Flash Messages (session expired, etc.) -->
+            {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+            <div class="flash-container">
+                {% for category, message in messages %}
+                <div class="flash-msg flash-{{ category }}">
+                    {% if category == 'danger' %}🔴
+                    {% elif category == 'warning' %}⚠️
+                    {% elif category == 'info' %}ℹ️
+                    {% else %}✅{% endif %}
+                    {{ message }}
+                    <button class="flash-close" onclick="this.parentElement.remove()">✕</button>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+            {% endwith %}
+            {% block content %}{% endblock %}
+        </main>
+
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script>
+        const STATION = "{{ station }}";
+    </script>
+
+    {% block extra_scripts_top %}{% endblock %}
+
+    <script defer src="{{ url_for('static', filename='dashboard.js') }}?v=1.4"></script>
+
+    <!-- ============================================
+         WIND INVESTIGATION LOG
+         ============================================ -->
+    <button class="wind-log-fab" id="windLogFab" onclick="toggleWindLogPanel()" title="Wind Investigation Log">
+        <span class="help-fab-icon">🛬</span>
+        <span class="help-fab-text">Wind Log</span>
+    </button>
+    <style>
+        .wind-log-fab {
+            position: fixed;
+            bottom: 84px;
+            /* 60px above the help-fab (24px + 60px) */
+            right: 20px;
+            background: #ef4444;
+            color: white;
+            border: none;
+            border-radius: 50px;
+            width: 48px;
+            height: 48px;
+            padding: 0;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(239, 68, 68, 0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1100;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            overflow: hidden;
+            white-space: nowrap;
+        }
+
+        .wind-log-fab:hover {
+            width: 150px;
+            transform: translateY(-5px);
+            box-shadow: 0 8px 25px rgba(239, 68, 68, 0.6);
+            background: #dc2626;
+            padding: 0 20px;
+            justify-content: flex-start;
+            gap: 10px;
+        }
+
+        .wind-log-fab .help-fab-text {
+            opacity: 0;
+            max-width: 0;
+            transition: all 0.3s ease;
+            pointer-events: none;
+            color: white;
+            font-weight: 600;
+        }
+
+        .wind-log-fab:hover .help-fab-text {
+            opacity: 1;
+            max-width: 100px;
+            pointer-events: auto;
+        }
+
+        @media (max-width: 768px) {
+            .wind-log-fab:hover {
+                width: 48px;
+                padding: 0;
+                justify-content: center;
+            }
+        }
+
+        .wind-log-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(15, 23, 42, 0.7);
+            backdrop-filter: blur(4px);
+            z-index: 9999;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .wind-log-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .wind-log-panel {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -45%);
+            width: 95%;
+            max-width: 1300px;
+            max-height: 85vh;
+            background: #FFFFFF;
+            /* Forced White Background */
+            color: #1e293b;
+            /* Forced Dark Text for readability */
+            border-radius: 12px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            z-index: 10000;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+            display: flex;
+            flex-direction: column;
+            border: 1px solid #e2e8f0;
+            overflow: hidden;
+        }
+
+        .wind-log-panel.active {
+            transform: translate(-50%, -50%);
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .wind-log-header {
+            background: #1E3A5F;
+            color: white;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .wind-log-header h3 {
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 1.2rem;
+        }
+
+        .wind-log-controls {
+            padding: 15px 20px;
+            border-bottom: 1px solid #e2e8f0;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            align-items: flex-end;
+            background: #f8fafc;
+            /* Subtle grey difference */
+        }
+
+        .wind-log-controls label {
+            color: #475569;
+            font-weight: 600;
+        }
+
+        .wind-log-controls .form-group {
+            margin: 0;
+        }
+
+        .wind-log-controls .form-input {
+            padding: 8px 12px;
+            height: 38px;
+            background: #ffffff;
+            border: 1px solid #cbd5e1;
+            color: #1e293b;
+        }
+
+        .wind-log-stats {
+            display: flex;
+            gap: 15px;
+            padding: 15px 20px;
+            background: #ffffff;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .wind-log-stat-card {
+            flex: 1;
+            background: #f8fafc;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid #e2e8f0;
+            text-align: center;
+        }
+
+        .wind-log-stat-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #1e3a5f;
+            margin-top: 5px;
+        }
+
+        .wind-log-stat-value.danger {
+            color: #ef4444;
+        }
+
+        .wind-log-body {
+            padding: 0;
+            flex: 1;
+            overflow-y: auto;
+            background: #ffffff;
+        }
+
+        .wind-log-body table {
+            color: #1e293b;
+        }
+
+        .wind-log-body th {
+            background: #edf2f7 !important;
+            color: #4a5568 !important;
+            border-right: 2px solid #223850;
+        }
+
+        .wind-log-body td {
+            border-bottom: 1px solid #edf2f7;
+            border-right: 2px solid #223850;
+        }
+
+        .wind-log-body th:last-child,
+        .wind-log-body td:last-child {
+            border-right: none;
+        }
+
+        .xw-danger-row {
+            background: rgba(239, 68, 68, 0.08) !important;
+        }
+
+        .metar-boundary td {
+            border-top: 2px solid #1e293b !important;
+        }
+
+        .wind-log-panel .text-muted {
+            color: #64748b !important;
+        }
+
+        /* DARK MODE SUPPORT */
+        [data-theme='dark'] .wind-log-panel {
+            background: #0f172a;
+            color: #f8fafc;
+            border-color: #1e293b;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8);
+        }
+
+        [data-theme='dark'] .wind-log-controls {
+            background: #1e293b;
+            border-bottom-color: #334155;
+        }
+
+        [data-theme='dark'] .wind-log-controls label {
+            color: #94a3b8;
+        }
+
+        [data-theme='dark'] .wind-log-controls .form-input {
+            background: #0f172a;
+            color: #f8fafc;
+            border-color: #334155;
+        }
+
+        [data-theme='dark'] .wind-log-stats {
+            background: #0f172a;
+            border-bottom-color: #334155;
+        }
+
+        [data-theme='dark'] .wind-log-stat-card {
+            background: #1e293b;
+            border-color: #334155;
+        }
+
+        [data-theme='dark'] .wind-log-stat-value {
+            color: #f1f5f9;
+        }
+
+        [data-theme='dark'] .wind-log-body {
+            background: #0f172a;
+        }
+
+        [data-theme='dark'] .wind-log-body table {
+            color: #f1f5f9;
+        }
+
+        [data-theme='dark'] .wind-log-body th {
+            background: #1e293b !important;
+            color: #cbd5e1 !important;
+            border-right-color: #334155;
+        }
+
+        [data-theme='dark'] .wind-log-body td {
+            border-bottom-color: #1e293b;
+            border-right-color: #334155;
+        }
+
+        [data-theme='dark'] .metar-boundary td {
+            border-top-color: #cbd5e1 !important;
+        }
+
+        [data-theme='dark'] .wind-log-panel .text-muted {
+            color: #94a3b8 !important;
+        }
+
+        [data-theme='dark'] .xw-danger-row {
+            background: rgba(239, 68, 68, 0.15) !important;
+        }
+    </style>
+
+    <div class="wind-log-overlay" id="windLogOverlay" onclick="closeWindLogPanel()"></div>
+    <div class="wind-log-panel" id="windLogPanel">
+        <div class="wind-log-header">
+            <h3><span>🛬</span> Wind Log History</h3>
+            <button class="help-modal-close" onclick="closeWindLogPanel()"
+                style="color:white; opacity:0.8; background:none; border:none; font-size:1.5rem; cursor:pointer;">✕</button>
+        </div>
+
+        <div class="wind-log-controls">
+            <div class="form-group" style="width: 120px;">
+                <label>Runway</label>
+                <select id="windLogRunwayFilter" class="form-input" onchange="refreshWindLogTable()">
+                    <option value="">Semua RWY</option>
+                    <option value="10">RWY 10</option>
+                    <option value="28">RWY 28</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Mulai Tanggal (UTC)</label>
+                <input type="date" id="windLogStart" class="form-input" onchange="refreshWindLogTable()">
+            </div>
+            <div class="form-group">
+                <label>Sampai Tanggal (UTC)</label>
+                <input type="date" id="windLogEnd" class="form-input" onchange="refreshWindLogTable()">
+            </div>
+            <div style="margin-left: auto; display: flex; gap: 10px;">
+                <button class="btn btn-outline" onclick="logCurrentWind()">📝 Log Current</button>
+                <button class="btn btn-outline" onclick="exportWindLogs()">📥 Export CSV</button>
+                <button class="btn btn-primary" onclick="refreshWindLogTable()">🔄 Refresh</button>
+            </div>
+        </div>
+
+        <div class="wind-log-stats">
+            <div class="wind-log-stat-card">
+                <div class="text-muted" style="font-size: 0.8rem; text-transform: uppercase;">Total Records</div>
+                <div class="wind-log-stat-value" id="windLogTotal">0</div>
+            </div>
+            <div class="wind-log-stat-card">
+                <div class="text-muted" style="font-size: 0.8rem; text-transform: uppercase;">Danger Exceedances</div>
+                <div class="wind-log-stat-value danger" id="windLogDanger">0</div>
+            </div>
+        </div>
+
+        <div class="wind-log-body">
+            <table class="data-table modern-table" style="margin:0;">
+                <thead style="position: sticky; top: 0; z-index: 10;">
+                    <tr>
+                        <th>TIME UTC</th>
+                        <th>METAR RAW</th>
+                        <th>STATION</th>
+                        <th>RWY</th>
+                        <th>RWY HDG</th>
+                        <th>WIND DIR</th>
+                        <th>WIND SPEED</th>
+                        <th>WIND GUST</th>
+                        <th>HEADWIND</th>
+                        <th>CROSSWIND</th>
+                        <th>TAILWIND</th>
+                        <th>CROSS STATUS</th>
+                        <th>TAIL STATUS</th>
+                    </tr>
+                </thead>
+                <tbody id="windLogTableBody">
+                    <!-- Loaded via JS -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- ============================================
+         MANUAL EBOOK MODAL
+         ============================================ -->
+    <div class="manual-overlay" id="manualOverlay" onclick="closeManualModal()"></div>
+    <div class="manual-panel" id="manualPanel">
+        <div class="manual-header">
+            <h3>
+                <span>📖</span>
+                Manual Ebook — Panduan Penggunaan
+            </h3>
+            <button class="manual-close" onclick="closeManualModal()">✕</button>
+        </div>
+        <div class="manual-body">
+            <!-- Ganti src dengan path PDF Anda -->
+            <iframe src="{{ url_for('static', filename='files/manual_book_metar.pdf') }}" class="manual-iframe"
+                title="Manual Ebook" frameborder="0">
+            </iframe>
+            <!-- Fallback jika browser tidak support iframe PDF -->
+            <div class="manual-fallback">
+                <p>Browser Anda tidak dapat menampilkan PDF secara langsung.</p>
+                <a href="{{ url_for('static', filename='files/manual_book_metar.pdf') }}" target="_blank"
+                    class="btn btn-primary">
+                    📥 Download PDF
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================
+         FLOATING HELP BUTTON & MODAL
+         ============================================ -->
+    {% block help_modal %}
+    <button class="help-fab" id="helpFab" onclick="toggleHelpModal()" title="Bantuan Penggunaan">
+        <span class="help-fab-icon">❓</span>
+        <span class="help-fab-text">Bantuan</span>
+    </button>
+
+    <!-- Help Modal Overlay -->
+    <div class="help-modal-overlay" id="helpModalOverlay" onclick="closeHelpModal()"></div>
+
+    <!-- Help Modal Content -->
+    <div class="help-modal" id="helpModal">
+        <div class="help-modal-header">
+            <div class="help-modal-title">
+                <span class="help-logo">📡</span>
+                <div>
+                    <h3>PANDUAN METAR DASHBOARD</h3>
+                    <small>Weather Observation & METAR Processing</small>
+                </div>
+            </div>
+            <button class="help-modal-close" onclick="closeHelpModal()">✕</button>
+        </div>
+
+        <div class="help-modal-body">
+            <!-- Section 1: Apa itu METAR Dashboard? -->
+            <div class="help-section">
+                <h4 class="help-section-title">
+                    <span class="help-icon">💡</span>
+                    Apa itu METAR Dashboard?
+                </h4>
+                <p class="help-text">
+                    <strong>METAR Auto Dashboard v2.0</strong> merupakan platform pengolahan data cuaca penerbangan
+                    (METAR)
+                    yang terintegrasi penuh dengan sistem BMKG dan Google Sheets. Dashboard ini dirancang untuk
+                    menyediakan informasi
+                    cuaca Bandara Juanda secara <em>real-time</em> bagi operasional penerbangan dan prakirawan cuaca,
+                    menggabungkan data METAR, analisis visual, narasi cuaca otomatis, dan sistem peringatan dini
+                    dalam satu tampilan interaktif yang modern.
+                </p>
+            </div>
+
+            <!-- Section 2: Fitur Utama -->
+            <div class="help-grid">
+                <!-- Data METAR -->
+                <div class="help-card">
+                    <h5 class="help-card-title">
+                        <span class="help-icon">📡</span>
+                        Data METAR Real-time
+                    </h5>
+                    <ul class="help-list">
+                        <li>Pengambilan data otomatis dari NOAA setiap 15 detik (polling)</li>
+                        <li>Highlight sintaks METAR dengan warna per kategori (angin, visibility, cuaca, awan, dll)</li>
+                        <li>Validasi format METAR 10 grup standar ICAO</li>
+                        <li>Deteksi otomatis tipe laporan: METAR, COR (Koreksi), SPECI (Khusus)</li>
+                        <li>Anti-duplikasi cerdas: tidak menyimpan data METAR yang sama dalam 30 menit</li>
+                        <li>Sinkronisasi otomatis ke Google Sheets sebagai backup cloud</li>
+                    </ul>
+                </div>
+
+                <!-- Visualisasi -->
+                <div class="help-card">
+                    <h5 class="help-card-title">
+                        <span class="help-icon">📊</span>
+                        Visualisasi & Grafik
+                    </h5>
+                    <ul class="help-list">
+                        <li>Grafik trend suhu, tekanan udara (QNH), dan kecepatan angin</li>
+                        <li>Wind Compass arah angin real-time dengan indikator gust</li>
+                        <li>Dual Wind Rose: 24 jam terakhir &amp; 1 bulan penuh sebelumnya</li>
+                        <li>Crosswind &amp; Tailwind Calculator untuk RWY 10/28</li>
+                        <li>Semua grafik dan wind rose dapat di-download sebagai PNG</li>
+                    </ul>
+                </div>
+
+                <!-- Peringatan -->
+                <div class="help-card">
+                    <h5 class="help-card-title">
+                        <span class="help-icon">🚨</span>
+                        Sistem Peringatan Dini
+                    </h5>
+                    <ul class="help-list">
+                        <li>Alarm suara otomatis untuk visibility &lt; 3000m</li>
+                        <li>Alarm suara otomatis untuk thunderstorm (TS, TSRA, +TSRA, VCTS)</li>
+                        <!-- <li>Deteksi METAR telat (stale data) — notifikasi jika data tidak update</li> -->
+                        <li>Alarm persisten lintas halaman (tidak berbunyi ulang jika data belum berubah)</li>
+                        <li>Efek visual cuaca: animasi hujan 🌧️ dan kabut/haze 🌫️ di layar</li>
+                        <li>Status warna panel: <strong style="color:#059669">Hijau</strong> (aman), <strong
+                                style="color:#d97706">Kuning</strong> (waspada), <strong
+                                style="color:#dc2626">Merah</strong> (bahaya)</li>
+                    </ul>
+                </div>
+
+                <!-- Tools -->
+                <div class="help-card">
+                    <h5 class="help-card-title">
+                        <span class="help-icon">🛠️</span>
+                        Tools & Utilitas
+                    </h5>
+                    <ul class="help-list">
+                        <li>QAM/MET Report Generator otomatis</li>
+                        <li>Narasi cuaca otomatis dalam Bahasa Indonesia (termasuk TEMPO)</li>
+                        <li>Manual METAR Parser — decode METAR secara mandiri</li>
+                        <li>Riwayat data METAR berdasarkan tanggal dengan filter WIB/UTC</li>
+                        <li>Export data ke CSV dan sinkronisasi Google Sheets</li>
+                        <li>Wind Investigation Log — catatan crosswind per runway</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Section 3: Halaman Navigasi -->
+            <div class="help-section">
+                <h4 class="help-section-title">
+                    <span class="help-icon">🗂️</span>
+                    Halaman yang Tersedia
+                </h4>
+                <div class="help-usage-grid">
+                    <div class="help-usage-item">
+                        <span class="help-step">🏠</span>
+                        <div>
+                            <strong>Dashboard</strong>
+                            <p>Tampilan utama dengan data METAR real-time, grafik, wind compass, wind rose, narasi
+                                cuaca, dan QAM.</p>
+                        </div>
+                    </div>
+                    <div class="help-usage-item">
+                        <span class="help-step">📋</span>
+                        <div>
+                            <strong>METAR</strong>
+                            <p>Halaman decode METAR lengkap dengan detail setiap grup data cuaca.</p>
+                        </div>
+                    </div>
+                    <div class="help-usage-item">
+                        <span class="help-step">📄</span>
+                        <div>
+                            <strong>QAM/MET Report</strong>
+                            <p>Generate laporan MET Report resmi untuk keperluan operasional penerbangan.</p>
+                        </div>
+                    </div>
+                    <div class="help-usage-item">
+                        <span class="help-step">📈</span>
+                        <div>
+                            <strong>Parameter Cuaca</strong>
+                            <p>Grafik trend suhu, tekanan udara, dan kecepatan angin dalam format visual interaktif.</p>
+                        </div>
+                    </div>
+                    <div class="help-usage-item">
+                        <span class="help-step">🧭</span>
+                        <div>
+                            <strong>Analisis Angin</strong>
+                            <p>Wind Rose, Wind Compass, dan Crosswind Calculator untuk analisis profil angin bandara.
+                            </p>
+                        </div>
+                    </div>
+                    <div class="help-usage-item">
+                        <span class="help-step">📅</span>
+                        <div>
+                            <strong>Cari Riwayat</strong>
+                            <p>Cari data METAR berdasarkan rentang tanggal, dilengkapi grafik dan tabel riwayat.</p>
+                        </div>
+                    </div>
+                    <div class="help-usage-item">
+                        <span class="help-step">🔧</span>
+                        <div>
+                            <strong>Parser Manual</strong>
+                            <p>Input kode METAR secara manual untuk di-decode, validasi, dan generate QAM/narasi.</p>
+                        </div>
+                    </div>
+                    <div class="help-usage-item">
+                        <span class="help-step">🛬</span>
+                        <div>
+                            <strong>Wind Log History</strong>
+                            <p>Tombol melayang di kanan bawah — catatan crosswind/tailwind untuk evaluasi runway.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section 4: Cara Penggunaan -->
+            <div class="help-section">
+                <h4 class="help-section-title">
+                    <span class="help-icon">🔧</span>
+                    Cara Penggunaan
+                </h4>
+                <div class="help-usage-grid">
+                    <div class="help-usage-item">
+                        <span class="help-step">1</span>
+                        <div>
+                            <strong>Pilih Navigasi</strong>
+                            <p>Gunakan menu sidebar di sebelah kiri untuk berpindah halaman dengan cepat.</p>
+                        </div>
+                    </div>
+                    <div class="help-usage-item">
+                        <span class="help-step">2</span>
+                        <div>
+                            <strong>Aktifkan Sound</strong>
+                            <p>Klik tombol 🔇 Sound untuk mengaktifkan alarm peringatan dini cuaca berbahaya.</p>
+                        </div>
+                    </div>
+                    <div class="help-usage-item">
+                        <span class="help-step">3</span>
+                        <div>
+                            <strong>Monitor Status</strong>
+                            <p>Perhatikan warna panel METAR dan indikator LIVE di header untuk memastikan data terkini.
+                            </p>
+                        </div>
+                    </div>
+                    <div class="help-usage-item">
+                        <span class="help-step">4</span>
+                        <div>
+                            <strong>Download Data</strong>
+                            <p>Klik tombol 📥 pada grafik atau wind rose untuk menyimpan visualisasi sebagai PNG.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section 5: Kontrol -->
+            <div class="help-section">
+                <h4 class="help-section-title">
+                    <span class="help-icon">🎛️</span>
+                    Kontrol Utama
+                </h4>
+                <div class="help-controls">
+                    <div class="help-control-item">
+                        <span class="help-key">☰</span>
+                        <span>Toggle Sidebar — collapse/expand menu navigasi</span>
+                    </div>
+                    <div class="help-control-item">
+                        <span class="help-key">🌙</span>
+                        <span>Dark/Light Mode — ubah tema tampilan (preferensi tersimpan)</span>
+                    </div>
+                    <div class="help-control-item">
+                        <span class="help-key">🔊</span>
+                        <span>Sound ON/OFF — aktifkan alarm suara peringatan dini</span>
+                    </div>
+                    <div class="help-control-item">
+                        <span class="help-key">🛬</span>
+                        <span>Wind Log History — buka Wind Investigation Log untuk analisis crosswind</span>
+                    </div>
+                    <div class="help-control-item">
+                        <span class="help-key">❓</span>
+                        <span>Bantuan — buka panduan penggunaan (halaman ini)</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section 6: Keterangan Status & Badge -->
+            <div class="help-section">
+                <h4 class="help-section-title">
+                    <span class="help-icon">🚦</span>
+                    Keterangan Status & Badge
+                </h4>
+                <div class="help-badges">
+                    <span class="help-badge badge-metar">🟢 METAR</span>
+                    <span class="help-badge badge-speci">🟡 SPECI</span>
+                    <span class="help-badge badge-invalid">🔴 INVALID</span>
+                </div>
+                <p class="help-text-small">
+                    <strong>METAR</strong>: Laporan cuaca rutin (setiap 00 dan 30 menit UTC) |
+                    <strong>SPECI</strong>: Laporan khusus di luar jadwal rutin karena perubahan cuaca signifikan |
+                    <strong>INVALID</strong>: Data tidak memenuhi syarat (salah format/kelengkapan)
+                </p>
+            </div>
+        </div>
+
+        <div class="help-modal-footer">
+            <span>© 2026 Stasiun Meteorologi Kelas I Juanda Sidoarjo</span>
+            <button class="btn btn-sm btn-primary" onclick="closeHelpModal()">Tutup</button>
+        </div>
+    </div>
+    {% endblock %}
+
+    <!-- ============================================
+         MANUAL EBOOK MODAL JAVASCRIPT
+         ============================================ -->
+    <script>
+        // ========== MANUAL EBOOK MODAL ==========
+        function openManualModal() {
+            document.getElementById('manualOverlay').classList.add('active');
+            document.getElementById('manualPanel').classList.add('active');
+            document.body.style.overflow = 'hidden'; // Prevent background scrolling
+        }
+
+        function closeManualModal() {
+            document.getElementById('manualOverlay').classList.remove('active');
+            document.getElementById('manualPanel').classList.remove('active');
+            document.body.style.overflow = '';
+        }
+
+        // Close with Escape key
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') {
+                closeManualModal();
+            }
+        });
+    </script>
+
+    {% block extra_scripts_bottom %}{% endblock %}
+</body>
+
+</html>

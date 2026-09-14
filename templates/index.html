@@ -1,0 +1,605 @@
+{% extends "layout.html" %}
+
+{% block title %}Dashboard Overview — METAR Auto Dashboard{% endblock %}
+
+{% block nav_active_dashboard %}active{% endblock %}
+
+{% block content %}
+<!-- Alert Banner -->
+<div class="alert-banner" id="alertBanner">
+    <span class="pulse-icon">🔴</span>
+    <strong id="alertTitle">CRITICAL WEATHER ALERT</strong>
+    <span id="alertMessage"></span>
+    <button class="alert-dismiss" onclick="dismissAlert()">Acknowledge</button>
+</div>
+
+<!-- System Status Panel -->
+<div class="card system-status-card fade-in" style="animation-delay:0.03s">
+    <div class="card-header">
+        <h3 class="card-title" style="font-size: 1.1rem;"><span class="icon">🖥️</span> System Status</h3>
+        <button class="btn btn-sm btn-outline" onclick="toggleSystem()" id="toggleSystemBtn">⏻ Toggle
+            System</button>
+    </div>
+    <div class="status-grid">
+        <div class="status-item">
+            <span class="status-label">SERVER</span>
+            <span class="status-value status-online" id="server-status">ONLINE 🟢</span>
+        </div>
+        <div class="status-item">
+            <span class="status-label">METAR FETCH</span>
+            <span class="status-value {% if auto_fetch %}status-running{% else %}status-paused{% endif %}"
+                id="metar-status">
+                {% if auto_fetch %}RUNNING 🟢{% else %}PAUSED 🟡{% endif %}
+            </span>
+        </div>
+        <div class="status-item">
+            <span class="status-label">LAST UPDATE</span>
+            <span class="status-value" id="last-update-status">
+                {{ last_metar_update if last_metar_update else "--:-- WIB" }}
+            </span>
+        </div>
+    </div>
+</div>
+
+<!-- Station Input Form -->
+<div class="card fade-in" style="animation-delay:0.05s">
+    <form method="POST" class="form-row">
+        <div class="form-group" style="max-width:200px">
+            <label for="icaoInput">ICAO Station</label>
+            <input type="text" name="icao" id="icaoInput" value="{{ station }}" class="form-input" placeholder="WARR">
+        </div>
+        <button type="submit" class="btn btn-primary" style="height:42px">⚡ Load METAR</button>
+        <a href="/download_csv" class="btn btn-outline" style="height:42px">📥 Download CSV</a>
+    </form>
+</div>
+
+<!-- ========== METAR HERO SECTION ========== -->
+{% if latest %}
+<div class="metar-hero fade-in" style="animation-delay:0.1s">
+
+    <!-- Raw METAR Panel -->
+    <div class="metar-raw-panel {% if latest.status == 'danger' %}status-danger{% elif latest.status == 'warning' %}status-warning{% endif %}"
+        id="metarRawPanel">
+        <div class="panel-title">📡 RAW METAR DATA</div>
+        <div class="metar-raw-code" id="metarRawCode">
+            {{ latest.metar.strip() if latest.metar.strip().endswith('=') else latest.metar.strip() + '=' }}
+            {% if latest.report_type == 'COR' or 'COR' in latest.metar or 'CCA' in latest.metar %}
+            <span class="badge"
+                style="background-color: #f59e0b; color: #1e293b; margin-left: 10px; font-size: 0.75rem; padding: 4px 8px; vertical-align: middle;">⚠️
+                COR</span>
+            {% elif latest.report_type == 'AMD' or 'AMD' in latest.metar %}
+            <span class="badge"
+                style="background-color: #3b82f6; color: #ffffff; margin-left: 10px; font-size: 0.75rem; padding: 4px 8px; vertical-align: middle;">⚠️
+                AMD</span>
+            {% elif latest.report_type == 'SPECI' or 'SPECI' in latest.metar %}
+            <span class="badge"
+                style="background-color: #ef4444; color: #ffffff; margin-left: 10px; font-size: 0.75rem; padding: 4px 8px; vertical-align: middle;">⚠️
+                SPECI</span>
+            {% endif %}
+        </div>
+        <div class="metar-actions">
+            <button class="btn btn-sm btn-outline" onclick="copyMetar()">📋 Copy</button>
+            <button class="btn btn-sm btn-outline" onclick="location.reload()">🔄 Refresh</button>
+            <span class="copy-feedback" id="metarCopyFeedback">Copied!</span>
+        </div>
+        <!-- Validation Display -->
+        <div id="metarValidation" style="margin-top: 12px; font-size: 0.85rem; font-family: 'Inter', sans-serif;">
+            <!-- Populated by dashboard.js -->
+        </div>
+    </div>
+
+    <!-- Decoded Parameters Panel -->
+    <div class="metar-decoded-panel" id="decodedPanel">
+        <div class="param-card">
+            <span class="param-label">🌡️ Temperature</span>
+            <span class="param-value" id="paramTemp">--</span>
+            <span class="param-unit">°C</span>
+        </div>
+        <div class="param-card">
+            <span class="param-label">💧 Dew Point</span>
+            <span class="param-value" id="paramDewpoint">--</span>
+            <span class="param-unit">°C</span>
+        </div>
+        <div class="param-card">
+            <span class="param-label">🌬️ Wind</span>
+            <span class="param-value" id="paramWind">--</span>
+            <span class="param-unit" id="paramWindDetail"></span>
+        </div>
+        <div class="param-card">
+            <span class="param-label">👁️ Visibility</span>
+            <span class="param-value" id="paramVis">--</span>
+            <span class="param-unit" id="paramVisUnit">m</span>
+            <div class="vis-bar">
+                <div class="vis-bar-fill" id="visBar" style="width:100%"></div>
+            </div>
+        </div>
+        <div class="param-card">
+            <span class="param-label">📊 QNH</span>
+            <span class="param-value" id="paramQNH">--</span>
+            <span class="param-unit">hPa</span>
+        </div>
+        <div class="param-card">
+            <span class="param-label">☁️ Cloud</span>
+            <span class="param-value" id="paramCloud" style="font-size:1.1rem">--</span>
+            <span class="param-unit" id="paramCloudExtra"></span>
+        </div>
+        <div class="param-card">
+            <span class="param-label">🌩️ Weather</span>
+            <span class="param-value" id="paramWeather" style="font-size:1.1rem">--</span>
+        </div>
+        <div class="param-card">
+            <span class="param-label">🕐 Obs Time (UTC)</span>
+            <span class="param-value" id="paramTime" style="font-size:1.2rem">--:-- UTC</span>
+        </div>
+    </div>
+
+</div>
+{% endif %}
+
+<div class="grid-2 fade-in" style="animation-delay:0.14s">
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title"><span class="icon">📄</span> QAM / MET Report</h3>
+            <div class="flex gap-sm">
+                <button class="btn btn-sm btn-outline" onclick="copyQam()">📋 Copy</button>
+                <a href="/download_qam?station={{ station }}&qam={{ qam | urlencode }}"
+                    class="btn btn-sm btn-outline">📥 Download</a>
+            </div>
+        </div>
+        <pre class="qam-display"
+            id="qamDisplay">{% if qam %}{{ qam }}{% else %}Wait for the latest METAR data...{% endif %}</pre>
+        <span class="copy-feedback" id="qamCopyFeedback">Copied!</span>
+    </div>
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title"><span class="icon">📝</span> Narasi Cuaca</h3>
+        </div>
+        <div class="narrative-display" id="narrativeDisplay">{% if narrative %}{{ narrative }}{% else %}Waiting for data
+            update...{% endif %}</div>
+    </div>
+</div>
+
+<!-- ========== UNIFIED WIND MONITORING ========== -->
+<div class="card fade-in" style="animation-delay:0.1s">
+    <div class="card-header">
+        <h3 class="card-title"><span class="icon">🧭</span> Arah & Kecepatan Angin</h3>
+        <div class="flex gap-sm">
+            <button class="btn btn-sm btn-outline" onclick="downloadChart('windCompassChart')">📥 Download</button>
+        </div>
+    </div>
+
+    <!-- Compass Section (Top) -->
+    <div id="windCompassChart" style="height:400px; max-width: 600px; margin: 0 auto;"></div>
+
+    <div style="border-top: 1px solid var(--border-color); margin: var(--space-md) 0; opacity: 0.5;"></div>
+
+    <!-- Crosswind Section (Bottom) -->
+    <div style="padding: 0 var(--space-md) var(--space-md);">
+        <div class="runway-selector" id="runwaySelector"
+            style="justify-content: center; margin-bottom: 20px; align-items: center; gap: 10px;">
+            <button class="runway-btn active" data-heading="100" onclick="selectRunway(this, 100)">RWY 10</button>
+            <button class="runway-btn" data-heading="280" onclick="selectRunway(this, 280)">RWY 28</button>
+            <a href="javascript:void(0)" class="info-icon" onclick="openCitationModal()"
+                title="Dasar Hukum & Perhitungan"
+                style="text-decoration: none; font-size: 1.2rem; color: var(--text-secondary); margin-left: 5px;">ⓘ</a>
+        </div>
+        <div class="crosswind-result" id="crosswindResult" style="max-width: 800px; margin: 0 auto;">
+            <div class="xwind-item xw-safe">
+                <div class="xw-label">Headwind</div>
+                <div class="xw-value" id="xwHead">-- kt</div>
+                <span class="xw-status" id="xwHeadStatus">--</span>
+            </div>
+            <div class="xwind-item xw-safe">
+                <div class="xw-label">Crosswind</div>
+                <div class="xw-value" id="xwCross">-- kt</div>
+                <span class="xw-status" id="xwCrossStatus">--</span>
+            </div>
+            <div class="xwind-item xw-safe">
+                <div class="xw-label">Tailwind</div>
+                <div class="xw-value" id="xwTail">-- kt</div>
+                <span class="xw-status" id="xwTailStatus">--</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Data store for compass -->
+    <div id="wind-data-store" style="display: none;" data-latest='{{ latest_wind | default("{}") | safe }}'
+        data-recent='{{ recent_winds | default("[]") | safe }}'></div>
+</div>
+
+<!-- Wind Roses (Grid) -->
+<div class="grid-2 fade-in" style="animation-delay:0.22s">
+    <!-- 24H Wind Rose -->
+    <div class="card flex flex-col">
+        <div class="card-header">
+            <h3 class="card-title"><span class="icon">🧭</span> Wind Rose (Yesterday UTC)</h3>
+            <div class="flex items-center gap-sm">
+                <span id="windrose24h-badge" class="badge"
+                    style="background-color: #3b82f6; color: white;">Loading...</span>
+                <button class="btn btn-sm btn-outline" onclick="downloadChart('windRose24h')">📥 Download</button>
+            </div>
+        </div>
+        <div id="windRose24h" style="height:400px;"></div>
+        <div id="windrose24h-info"
+            style="padding: 10px 16px; font-size: 0.85rem; color: var(--text-secondary); border-top: 1px solid var(--border-color);">
+            Fetching 24h wind data from Sheets...
+        </div>
+    </div>
+
+    <!-- Monthly Wind Rose -->
+    <div class="card flex flex-col">
+        <div class="card-header">
+            <h3 class="card-title"><span class="icon">🧭</span> Wind Rose (Previous Month)</h3>
+            <div class="flex items-center gap-sm">
+                <span id="windroseMonth-badge" class="badge"
+                    style="background-color: #059669; color: white;">Loading...</span>
+                <button class="btn btn-sm btn-outline" onclick="downloadChart('windRoseMonth')">📥 Download</button>
+            </div>
+        </div>
+        <div id="windRoseMonth" style="height:400px;"></div>
+        <div id="windroseMonth-info"
+            style="padding: 10px 16px; font-size: 0.85rem; color: var(--text-secondary); border-top: 1px solid var(--border-color);">
+            Fetching monthly data from Google Sheets...
+        </div>
+    </div>
+</div>
+
+<!-- ========== HISTORICAL TRENDS ==========
+    <div class="card fade-in" style="animation-delay:0.16s">
+        <div class="card-header">
+        <h3 class="card-title"><span class="icon">📈</span> Historical Charts & Trends</h3>
+        <span class="text-muted" style="font-size:0.8rem">Station: {{ station }}</span>
+    </div>
+    <div style="margin-bottom: var(--space-md); color: var(--text-secondary); font-size: 0.9rem;">
+        These charts display the historical trend of weather parameters based on the last 20 METAR records. 
+        It updates automatically as new data is fetched.
+    </div>
+</div> -->
+
+<div class="card chart-card fade-in" style="animation-delay:0.17s">
+    <div class="card-header">
+        <h3 class="card-title"><span class="icon">🌡️</span> Temperature Trend</h3>
+        <button class="btn btn-sm btn-outline" onclick="downloadChart('tempChart')">📥 Download</button>
+    </div>
+    <div class="chart-container">
+        <canvas id="tempChart"></canvas>
+    </div>
+    <div id="tempChart-minmax" class="chart-minmax-row loading"></div>
+    <div id="tempChart-info"
+        style="padding: 10px 16px; font-size: 0.85rem; color: var(--text-secondary); border-top: 1px solid var(--border-color);">
+        {% if history_start %}{{ history_start }} to {{ history_end }} • {{ history_count }} records (from
+        {{ history_source }}){% else %}Loading temperature trend data...{% endif %}
+    </div>
+</div>
+
+<div class="card chart-card fade-in" style="animation-delay:0.18s">
+    <div class="card-header">
+        <h3 class="card-title"><span class="icon">📊</span> Pressure (QNH) Trend</h3>
+        <button class="btn btn-sm btn-outline" onclick="downloadChart('pressureChart')">📥 Download</button>
+    </div>
+    <div class="chart-container">
+        <canvas id="pressureChart"></canvas>
+    </div>
+    <div id="pressureChart-minmax" class="chart-minmax-row loading"></div>
+    <div id="pressureChart-info"
+        style="padding: 10px 16px; font-size: 0.85rem; color: var(--text-secondary); border-top: 1px solid var(--border-color);">
+        {% if history_start %}{{ history_start }} to {{ history_end }} • {{ history_count }} records (from
+        {{ history_source }}){% else %}Loading pressure trend data...{% endif %}
+    </div>
+</div>
+
+<div class="card chart-card fade-in" style="animation-delay:0.19s">
+    <div class="card-header">
+        <h3 class="card-title"><span class="icon">💨</span> Wind Speed Trend</h3>
+        <button class="btn btn-sm btn-outline" onclick="downloadChart('windChart')">📥 Download</button>
+    </div>
+    <div class="chart-container">
+        <canvas id="windChart"></canvas>
+    </div>
+    <div id="windChart-minmax" class="chart-minmax-row loading"></div>
+    <div id="windChart-info"
+        style="padding: 10px 16px; font-size: 0.85rem; color: var(--text-secondary); border-top: 1px solid var(--border-color);">
+        {% if history_start %}{{ history_start }} to {{ history_end }} • {{ history_count }} records (from
+        {{ history_source }}){% else %}Loading wind trend data...{% endif %}
+    </div>
+</div>
+
+<!-- ========== WIND ANALYSIS ========== 
+<div class="card fade-in" style="animation-delay:0.2s">
+    <div class="card-header">
+        <h3 class="card-title"><span class="icon">🧭</span> Wind Analysis Center</h3>
+        <span class="text-muted" style="font-size:0.8rem">Station: {{ station }}</span>
+    </div>
+    <div style="margin-bottom: var(--space-md); color: var(--text-secondary); font-size: 0.9rem;">
+        Monitor real-time wind direction updates via the Wind Compass. The Wind Rose charts show distribution 
+        over the last 24 hours and the previous calendar month.
+    </div>
+</div> -->
+
+
+<!-- ========== THUNDERSTORM DETECTION ========== -->
+<!-- (Internal module or currently hidden) -->
+
+<!-- ========== HISTORY TABLE ========== -->
+<div class="record-manager-card">
+    <div class="card-header" style="padding: 0 0 15px 0; border-bottom: 1px solid var(--border-color); margin-bottom: 20px;">
+        <h3 class="card-title"><span class="icon">📋</span> METAR History</h3>
+    </div>
+    <div class="manager-controls">
+        <div class="button-group">
+            <button id="btn-today" class="toggle-btn active" onclick="loadView('today')">
+                Today <span id="count-today" class="badge">0</span>
+            </button>
+            <button id="btn-yesterday" class="toggle-btn" onclick="loadView('yesterday')">
+                Yesterday <span id="count-yesterday" class="badge">0</span>
+            </button>
+        </div>
+
+        <!-- DROPDOWN FILTER METAR / SPECI -->
+        <div class="filter-dropdown-wrapper" style="display: flex; align-items: center; gap: 8px; margin-left: auto; margin-right: 20px;">
+            <label for="reportTypeFilter" style="font-size: 0.85rem; color: var(--text-secondary); font-weight: 600; white-space: nowrap;">
+                Tipe Laporan:
+            </label>
+            <select id="reportTypeFilter" class="form-select" onchange="filterReportType()" 
+                style="padding: 6px 30px 6px 12px; border-radius: 6px; border: 1px solid var(--border-color); 
+                       background-color: var(--bg-card); color: var(--text-primary); font-size: 0.85rem; 
+                       cursor: pointer; appearance: none; min-width: 130px;
+                       background-image: url('data:image/svg+xml;charset=UTF-8,%3csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%2364748b\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'%3e%3cpolyline points=\'6 9 12 15 18 9\'%3e%3c/polyline%3e%3c/svg%3e'); 
+                       background-repeat: no-repeat; background-position: right 10px center; background-size: 14px;">
+                <option value="all">📋 Semua Data</option>
+                <option value="METAR">📡 METAR</option>
+                <option value="SPECI">⚠️ SPECI</option>
+            </select>
+        </div>
+
+        <div class="view-info">
+            <span id="display-date" style="font-weight: 700; color: var(--bmkg-primary);">-- --- ----</span>
+            <span class="live-dot"></span>
+        </div>
+    </div>
+
+    <div class="table-responsive">
+        <table id="metar-daily-table" class="data-table modern-table">
+            <thead>
+                <tr>
+                    <th class="col-time" style="text-transform: uppercase;">TIME UTC</th>
+                    <th class="col-station" style="text-transform: uppercase;">STATION</th>
+                    <th class="col-metar" style="text-transform: uppercase;">METAR DATA</th>
+                    <th class="col-status" style="text-transform: uppercase;">STATUS</th>
+                </tr>
+            </thead>
+            <tbody id="table-body">
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts_bottom %}
+<!-- We inject the initial chart data rendered from the server -->
+{% if has_history %}
+<!-- Data Storage for Charts -->
+<div id="chart-data-store" style="display: none;" data-labels='{{ labels | tojson | safe }}'
+    data-temps='{{ temps | tojson | safe }}' data-pressures='{{ pressures | tojson | safe }}'
+    data-winds='{{ winds | tojson | safe }}' data-gusts='{{ gusts | tojson | safe }}'></div>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        console.log("[DASHBOARD] Initializing all-in-one components");
+
+        // 1. Initial Trends Render
+        const chartStore = document.getElementById('chart-data-store');
+        if (chartStore) {
+            try {
+                const labels = JSON.parse(chartStore.getAttribute('data-labels'));
+                const temps = JSON.parse(chartStore.getAttribute('data-temps'));
+                const pressures = JSON.parse(chartStore.getAttribute('data-pressures'));
+                const winds = JSON.parse(chartStore.getAttribute('data-winds'));
+                const gusts = JSON.parse(chartStore.getAttribute('data-gusts'));
+
+                if (typeof updateCharts === 'function' && labels && labels.length > 0) {
+                    setTimeout(() => {
+                        updateCharts(labels, temps, pressures, winds, gusts);
+                    }, 300);
+                }
+            } catch (e) {
+                console.error("Error parsing trend data:", e);
+            }
+        }
+
+        // 2. Initial Wind Analysis
+        const windStore = document.getElementById("wind-data-store");
+        if (windStore && typeof updateWindCompass === 'function') {
+            try {
+                const latestStr = windStore.getAttribute("data-latest");
+                const recentStr = windStore.getAttribute("data-recent");
+
+                if (latestStr && latestStr !== "{}") {
+                    const parsedLatest = JSON.parse(latestStr);
+                    if (parsedLatest && parsedLatest.speed !== undefined) {
+                        let recentArr = [];
+                        if (recentStr && recentStr !== "[]") {
+                            recentArr = JSON.parse(recentStr);
+                            window.recentWinds = recentArr.map(w => ({
+                                dir: parseFloat(w.dir),
+                                speed: parseFloat(w.speed),
+                                timestamp: w.timestamp
+                            }));
+                        }
+                        updateWindCompass({
+                            wind_direction: parsedLatest.dir,
+                            wind_speed: parsedLatest.speed
+                        }, "{{ station }}");
+                    }
+                }
+            } catch (e) {
+                console.error("Error setting wind data:", e);
+            }
+        }
+
+        // 3. Load Wind Rose
+        if (typeof loadWindRose === 'function') {
+            setTimeout(() => {
+                loadWindRose("{{ station }}");
+            }, 600);
+        }
+
+        // 4. Final Sync for tools/weather
+        if (window.lastKnownMetar && typeof updateDOM === 'function') {
+            updateDOM(window.lastKnownMetar, "{{ station }}");
+        }
+    });
+</script>
+{% endif %}
+{% endblock %}
+
+{% block help_modal %}
+{{ super() }}
+
+<!-- FULL-PAGE CITATION MODAL (Placed globally to cover sidebar/header) -->
+<div class="help-modal-overlay" id="citationModalOverlay" onclick="closeCitationModal()"></div>
+<div class="help-modal" id="citationModal">
+    <div class="help-modal-header">
+        <div class="help-modal-title">
+            <span class="help-logo">📚</span>
+            <div>
+                <h3>KOMPONEN ANGIN PESAWAT</h3>
+                <small>Dasar Hukum & Perhitungan</small>
+            </div>
+        </div>
+        <button class="help-modal-close" onclick="closeCitationModal()">✕</button>
+    </div>
+
+    <div class="help-modal-body">
+        <!-- Section 1: Definisi -->
+        <div class="help-section">
+            <h4 class="help-section-title">
+                <span class="help-icon">ℹ️</span>
+                1. Hubungan Headwind, Tailwind, dan Crosswind
+            </h4>
+            <p class="help-text">
+                Angin yang bekerja pada pesawat (Wind Acting on Aircraft) dapat diuraikan menjadi tiga komponen utama:
+            </p>
+            <div class="help-grid" style="grid-template-columns: 1fr; margin-top: 15px;">
+                <div class="help-card" style="border-left: 4px solid #22c55e;">
+                    <h5 class="help-card-title" style="color: #15803d;"><span class="help-icon">🟢</span> Headwind
+                        Component</h5>
+                    <p class="help-text-small">Angin yang berlawanan langsung dengan gerak pesawat, meningkatkan daya
+                        angkat dan memperbaiki performa lepas landas/pendaratan.</p>
+                </div>
+                <div class="help-card" style="border-left: 4px solid #ef4444;">
+                    <h5 class="help-card-title" style="color: #b91c1c;"><span class="help-icon">🔴</span> Tailwind
+                        Component</h5>
+                    <p class="help-text-small">Angin yang searah dengan gerak pesawat, mengurangi kecepatan udara
+                        efektif dan menambah jarak landasan yang dibutuhkan (berbahaya jika terlalu besar).</p>
+                </div>
+                <div class="help-card" style="border-left: 4px solid #3b82f6;">
+                    <h5 class="help-card-title" style="color: #1d4ed8;"><span class="help-icon">🔵</span> Crosswind
+                        Component</h5>
+                    <p class="help-text-small">Angin tegak lurus dengan jalur pesawat, membutuhkan masukan kontrol dan
+                        teknik pendaratan khusus.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Section 2: Formula Matematika -->
+        <div class="help-section">
+            <h4 class="help-section-title">
+                <span class="help-icon">🧮</span>
+                2. Formula Matematika (Metode Trigonometri)
+            </h4>
+            <div class="help-card" style="background: var(--bg-body);">
+                <div
+                    style="font-family: 'Consolas', 'Courier New', monospace; font-size: 1.1rem; padding: 15px; border-radius: 8px; background: rgba(0,0,0,0.05);">
+                    <div style="margin-bottom: 10px; color: var(--bmkg-danger);">• Crosswind = Kecepatan Angin × sin(θ)
+                    </div>
+                    <div style="color: var(--bmkg-success);">• Headwind = Kecepatan Angin × cos(θ)</div>
+                </div>
+                <p class="help-text-small" style="margin-top: 15px; font-weight: bold; color: var(--bmkg-danger);">
+                    💡 CATATAN: Jika hasil perhitungan Headwind Component bernilai negatif (-), maka secara otomatis
+                    komponen tersebut adalah Tailwind.
+                </p>
+            </div>
+        </div>
+
+        <!-- Section 3: Contoh Perhitungan -->
+        <div class="help-section">
+            <h4 class="help-section-title">
+                <span class="help-icon">📝</span>
+                3. Contoh Kasus Perhitungan
+            </h4>
+            <div class="help-grid">
+                <div class="help-card">
+                    <h5 class="help-card-title" style="color: var(--bmkg-primary);">Kasus A: Runway 10 (Crosswind)</h5>
+                    <p class="help-text-small" style="margin-bottom: 10px;">Angin dari <strong>130°</strong> kecepatan
+                        <strong>20 knot</strong>, Runway heading <strong>100°</strong>:
+                    </p>
+                    <ul class="help-list" style="font-family: monospace;">
+                        <li>θ = 130° - 100° = 30°</li>
+                        <li>Headwind = 20 × cos(30°) ≈ 17.3 knot</li>
+                        <li>Crosswind = 20 × sin(30°) = 10 knot</li>
+                    </ul>
+                </div>
+                <div class="help-card" style="border-color: var(--bmkg-danger);">
+                    <h5 class="help-card-title" style="color: var(--bmkg-danger);">Kasus B: Runway 28 (Tailwind!)</h5>
+                    <p class="help-text-small" style="margin-bottom: 10px;">Angin dari <strong>100°</strong> kecepatan
+                        <strong>10 knot</strong>, Runway heading <strong>280°</strong>:
+                    </p>
+                    <ul class="help-list" style="font-family: monospace;">
+                        <li>θ = 100° - 280° = -180°</li>
+                        <li>Headwind = 10 × cos(-180°) = -10 knot</li>
+                        <li style="color: var(--bmkg-danger); font-weight: bold;">Hasil: Terdapat Tailwind 10 knot.</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Section 4: Estimasi Cepat -->
+        <div class="help-section">
+            <h4 class="help-section-title">
+                <span class="help-icon">⏱️</span>
+                4. Metode Estimasi Cepat (Clock Face)
+            </h4>
+            <div class="help-usage-grid">
+                <div class="help-usage-item">
+                    <span class="help-step" style="background: var(--bmkg-accent);">15°</span>
+                    <div><strong>1/4</strong> kecepatan angin</div>
+                </div>
+                <div class="help-usage-item">
+                    <span class="help-step" style="background: var(--bmkg-accent);">30°</span>
+                    <div><strong>1/2</strong> kecepatan angin</div>
+                </div>
+                <div class="help-usage-item">
+                    <span class="help-step" style="background: var(--bmkg-accent);">45°</span>
+                    <div><strong>3/4</strong> kecepatan angin</div>
+                </div>
+                <div class="help-usage-item">
+                    <span class="help-step" style="background: var(--bmkg-accent);">60°</span>
+                    <div><strong>Seluruh</strong> kecepatan angin</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Section 5: Referensi -->
+        <div class="help-section">
+            <h4 class="help-section-title">
+                <span class="help-icon">⚖️</span>
+                5. Referensi Regulasi Penerbangan
+            </h4>
+            <ul class="help-list">
+                <li><strong>ICAO Annex 14:</strong> Standar desain aerodrome terkait orientasi angin.</li>
+                <li><strong>ICAO Doc 8168 (PANS-OPS):</strong> Prosedur layanan navigasi udara.</li>
+                <li><strong>FAA AC 25-7D / AC 150/5300-13:</strong> Panduan pengujian terbang dan operasional lapangan
+                    terbang.</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="help-modal-footer">
+        <span>Sumber: <a href="https://www.tarmacview.com/glossary/crosswind-component/" target="_blank"
+                style="color: var(--bmkg-primary); text-decoration: underline;">TarmacView Aviation Glossary</a></span>
+        <button class="btn btn-sm btn-primary" onclick="closeCitationModal()">Tutup Halaman</button>
+    </div>
+</div>
+{% endblock %}

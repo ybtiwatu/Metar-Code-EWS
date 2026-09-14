@@ -1,0 +1,162 @@
+{% extends "layout.html" %}
+
+{% block title %}QAM / MET Report — METAR Auto Dashboard{% endblock %}
+
+{% block nav_active_qam_report %}active{% endblock %}
+
+{% block content %}
+
+<div class="card fade-in" style="animation-delay:0.2s; margin-top: 20px;">
+    <div class="card-header">
+        <h3 class="card-title"><span class="icon">ℹ️</span> Informasi Laporan</h3>
+    </div>
+    <div style="padding: 1rem; color: var(--text-secondary); font-size: 0.9rem;">
+        Halaman ini menampilkan laporan QAM (Quarterly Aviation Meteorological Report) dan narasi cuaca otomatis
+        berdasarkan data METAR terbaru yang diterima dari stasiun {{ station }}.
+    </div>
+</div>
+
+<!-- Section 1: Manual METAR Parser 
+<div class="card fade-in" style="animation-delay:0.05s; margin-bottom: 2rem;">
+    <div class="card-header">
+        <h3 class="card-title"><span class="icon">🔧</span> Manual METAR Parser</h3>
+        <p class="text-muted" style="font-size: 0.85rem; margin-top: 4px;">Paste raw METAR below to decode and validate
+            manually.</p>
+    </div>
+
+    <form method="post" action="/qam_report">
+        <div class="form-group mb-lg">
+            <label for="rawMetar">Paste METAR Data</label>
+            <textarea name="raw_metar" id="rawMetar" class="form-input" rows="4"
+                placeholder="Paste METAR here... (contoh: METAR WARR 121755Z 08004KT 9999 FEW020CB 27/24 Q1008)"
+                style="font-family:'JetBrains Mono',monospace;resize:vertical;"
+                required>{{ raw_metar or '' }}</textarea>
+        </div>
+
+        <div id="metarError" class="hidden"
+            style="background:#FEF2F2;border:1px solid #FECACA;color:#991B1B;padding:12px 16px;border-radius:var(--radius-md);margin-bottom:var(--space-md);font-size:0.9rem;font-weight:600;">
+            ⚠️ Format METAR tidak valid! Harap masukkan data METAR yang benar.
+        </div>
+
+        <button class="btn btn-primary" id="convertBtn" disabled>🔄 Convert METAR to QAM</button>
+    </form>
+
+    {% if validation_results %}
+    <div class="validation-card {% if validation_results[0].startswith('✅') %}validation-success{% else %}validation-error{% endif %}"
+        style="margin-top: 1.5rem;">
+        <h4 style="margin-bottom: 10px; font-size: 0.95rem;">📋 Validation Results:</h4>
+        <ul
+            style="list-style: none; padding: 0; margin: 0; font-family: 'JetBrains Mono', monospace; font-size: 0.85rem;">
+            {% for res in validation_results %}
+            <li style="margin-bottom: 4px;">{{ res }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    {% if parsed_qam %}
+    <hr style="margin:var(--space-xl) 0;border-color:var(--border-color);">
+
+    <div class="card-header">
+        <h3 class="card-title"><span class="icon">📝</span> Converted QAM</h3>
+        <div class="flex gap-sm">
+            <button class="btn btn-sm btn-outline" onclick="copyQam()">📋 Copy</button>
+        </div>
+    </div>
+    <div id="parsedQamDisplay" class="qam-display">{{ parsed_qam }}</div>
+    {% endif %}
+</div> -->
+
+<div class="grid-2 fade-in" style="animation-delay:0.1s">
+    <!-- QAM Report Card -->
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title"><span class="icon">📄</span> QAM / MET Report</h3>
+            <div class="flex gap-sm">
+                <button class="btn btn-sm btn-outline" onclick="copyQam()">📋 Copy</button>
+                <a href="/download_qam?station={{ station }}&qam={{ qam | urlencode }}"
+                    class="btn btn-sm btn-outline">📥 Download</a>
+            </div>
+        </div>
+        <pre class="qam-display"
+            id="qamDisplay">{% if qam %}{{ qam }}{% else %}Wait for the latest METAR data...{% endif %}</pre>
+        <span class="copy-feedback" id="qamCopyFeedback">Copied!</span>
+    </div>
+
+    <!-- Weather Narrative Card -->
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title"><span class="icon">📝</span> Narasi Cuaca</h3>
+        </div>
+        <div class="narrative-display" id="narrativeDisplay">
+            {% if narrative %}
+            {{ narrative }}
+            {% else %}
+            Waiting for data update...
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts_bottom %}
+<script>
+    // Manual Parser Script (Client-side validation)
+    document.addEventListener('DOMContentLoaded', function () {
+        const textarea = document.getElementById('rawMetar');
+        const button = document.getElementById('convertBtn');
+        const errorMsg = document.getElementById('metarError');
+
+        function validateMetar(text) {
+            const trimmed = text.trim();
+            if (!/^[A-Z]{4}/i.test(trimmed) && !/^METAR\s+[A-Z]{4}/i.test(trimmed) && !/^SPECI\s+[A-Z]{4}/i.test(trimmed)) return false;
+            return true;
+        }
+
+        function checkInput() {
+            if (!textarea) return;
+            const text = textarea.value.trim();
+            if (text.length > 0) {
+                if (validateMetar(text)) {
+                    button.removeAttribute('disabled');
+                    errorMsg.classList.add('hidden');
+                } else {
+                    button.setAttribute('disabled', 'disabled');
+                    errorMsg.classList.remove('hidden');
+                }
+            } else {
+                button.setAttribute('disabled', 'disabled');
+                errorMsg.classList.add('hidden');
+            }
+        }
+
+        if (textarea) {
+            textarea.addEventListener('input', checkInput);
+            checkInput();
+        }
+    });
+
+    // Copy QAM Function (Same as Dashboard)
+    function copyQam() {
+        const el = document.getElementById('qamDisplay');
+        const pEl = document.getElementById('parsedQamDisplay');
+
+        // Prioritize copying parsed result if available
+        const rawText = pEl ? pEl.textContent.trim() : (el ? el.textContent.trim() : '');
+
+        if (!rawText) return;
+
+        // Wrap in triple backticks so WhatsApp renders it in monospace font
+        // This ensures the ":" alignment is preserved in proportional-font apps
+        const wrappedText = '```\n' + rawText + '\n```';
+        navigator.clipboard.writeText(wrappedText).then(() => {
+            const fb = document.getElementById('qamCopyFeedback');
+            if (fb) {
+                fb.classList.add('visible');
+                setTimeout(() => fb.classList.remove('visible'), 2000);
+            }
+        });
+    }
+</script>
+{% endblock %}

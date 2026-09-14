@@ -1,0 +1,144 @@
+{% extends "layout.html" %}
+
+{% block title %}Manual Parser — METAR Auto Dashboard{% endblock %}
+
+{% block header_station_text %}
+<span class="station-code">Manual</span>
+<span class="station-name">Parser</span>
+{% endblock %}
+
+{% block nav_active_parser %}active{% endblock %}
+
+{% block content %}
+<div class="card fade-in">
+    <div class="card-header">
+        <h3 class="card-title"><span class="icon">🔧</span> Manual METAR Converter</h3>
+    </div>
+
+    <form method="post">
+        <div class="form-group mb-lg">
+            <label for="rawMetar">Paste METAR Data</label>
+            <textarea name="raw_metar" id="rawMetar" class="form-input" rows="4"
+                placeholder="Paste METAR here... (contoh: METAR WARR 121755Z 08004KT 9999 FEW020CB 27/24 Q1008)"
+                style="font-family:'JetBrains Mono',monospace;resize:vertical;"
+                required>{{ raw_metar or '' }}</textarea>
+        </div>
+
+        <div id="metarError" class="hidden"
+            style="background:#FEF2F2;border:1px solid #FECACA;color:#991B1B;padding:12px 16px;border-radius:var(--radius-md);margin-bottom:var(--space-md);font-size:0.9rem;font-weight:600;">
+            ⚠️ Format METAR tidak valid! Harap masukkan data METAR yang benar.
+        </div>
+
+        <button class="btn btn-primary" id="convertBtn" disabled>🔄 Convert METAR to QAM</button>
+    </form>
+
+    {% if validation_results %}
+    <div
+        class="validation-card {% if validation_results[0].startswith('✅') %}validation-success{% else %}validation-error{% endif %}">
+        <h4 style="margin-bottom: 10px; font-size: 0.95rem;">📋 Validation Results:</h4>
+        <ul
+            style="list-style: none; padding: 0; margin: 0; font-family: 'JetBrains Mono', monospace; font-size: 0.85rem;">
+            {% for res in validation_results %}
+            <li style="margin-bottom: 4px;">{{ res }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+
+    {% if parsed_qam %}
+    <hr style="margin:var(--space-xl) 0;border-color:var(--border-color);">
+
+    <div class="card-header">
+        <h3 class="card-title"><span class="icon">📝</span> Converted QAM</h3>
+        <div class="flex gap-sm">
+            <button class="btn btn-sm btn-outline" onclick="copyQam()">📋 Copy</button>
+        </div>
+    </div>
+    <pre class="qam-display" id="qamDisplay">{{ parsed_qam }}</pre>
+    <span class="copy-feedback" id="qamCopyFeedback">Copied!</span>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_scripts_bottom %}
+<script>
+    // METAR Validation
+    document.addEventListener('DOMContentLoaded', function () {
+        const textarea = document.getElementById('rawMetar');
+        const button = document.getElementById('convertBtn');
+        const errorMsg = document.getElementById('metarError');
+
+        function validateMetar(text) {
+            const trimmed = text.trim();
+            if (!/^[A-Z]{4}/i.test(trimmed)) return false;
+            if (!/\d{4,6}/.test(trimmed)) return false;
+            return true;
+        }
+
+        function checkInput() {
+            if (!textarea) return;
+            const text = textarea.value.trim();
+            if (text.length > 0) {
+                if (validateMetar(text)) {
+                    button.removeAttribute('disabled');
+                    errorMsg.classList.add('hidden');
+                } else {
+                    button.setAttribute('disabled', 'disabled');
+                    errorMsg.classList.remove('hidden');
+                }
+            } else {
+                button.setAttribute('disabled', 'disabled');
+                errorMsg.classList.add('hidden');
+            }
+        }
+
+        if (textarea) {
+            textarea.addEventListener('input', checkInput);
+            checkInput();
+        }
+    });
+
+    // Copy QAM
+    function copyQam() {
+        const el = document.getElementById('qamDisplay');
+        if (!el) return;
+        // Wrap in triple backticks so WhatsApp renders it in monospace font
+        const rawText = el.textContent.trim();
+        const wrappedText = '```\n' + rawText + '\n```';
+        navigator.clipboard.writeText(wrappedText).then(() => {
+            const fb = document.getElementById('qamCopyFeedback');
+            if (fb) { fb.classList.add('visible'); setTimeout(() => fb.classList.remove('visible'), 2000); }
+        });
+    }
+
+    window.isManualSession = true;
+</script>
+
+{% if raw_metar %}
+<script>
+    window.addEventListener('load', function () {
+        // Delay 500ms to ensure all JS is fully loaded and DOM is ready
+        setTimeout(function () {
+            var metarText = "{{ raw_metar|replace('\"', '\\\"')|replace('\n', ' ')|safe }}";
+            console.log('[MANUAL] Triggering weather effects for:', metarText);
+
+            // Trigger Fog Effect
+            if (typeof checkAndActivateFog === 'function') {
+                checkAndActivateFog(metarText);
+            } else {
+                console.warn('[MANUAL] checkAndActivateFog not available');
+            }
+
+            // Trigger Rain Effect
+            if (typeof checkRainStatus === 'function') {
+                checkRainStatus(metarText);
+            } else {
+                console.warn('[MANUAL] checkRainStatus not available');
+            }
+        }, 500);
+    });
+</script>
+{% endif %}
+
+{% endblock %}

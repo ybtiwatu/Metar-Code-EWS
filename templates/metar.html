@@ -1,0 +1,152 @@
+{% extends "layout.html" %}
+
+{% block title %}METAR & Manual Parser — METAR Auto Dashboard{% endblock %}
+
+{% block nav_active_metar %}active{% endblock %}
+
+{% block content %}
+<!-- ========== METAR HERO SECTION ========== -->
+{% if latest %}
+<div class="metar-hero fade-in" style="animation-delay:0.1s">
+
+    <!-- Raw METAR Panel -->
+    <div class="metar-raw-panel {% if latest.status == 'danger' %}status-danger{% elif latest.status == 'warning' %}status-warning{% endif %}"
+        id="metarRawPanel">
+        <div class="panel-title">📡 RAW METAR DATA</div>
+        <div class="metar-raw-code" id="metarRawCode">
+            {{ latest.metar.strip() if latest.metar.strip().endswith('=') else latest.metar.strip() + '=' }}
+            {% if latest.report_type == 'COR' or 'COR' in latest.metar or 'CCA' in latest.metar %}
+            <span class="badge"
+                style="background-color: #f59e0b; color: #1e293b; margin-left: 10px; font-size: 0.75rem; padding: 4px 8px; vertical-align: middle;">⚠️
+                COR</span>
+            {% elif latest.report_type == 'AMD' or 'AMD' in latest.metar %}
+            <span class="badge"
+                style="background-color: #3b82f6; color: #ffffff; margin-left: 10px; font-size: 0.75rem; padding: 4px 8px; vertical-align: middle;">⚠️
+                AMD</span>
+            {% elif latest.report_type == 'SPECI' or 'SPECI' in latest.metar %}
+            <span class="badge"
+                style="background-color: #ef4444; color: #ffffff; margin-left: 10px; font-size: 0.75rem; padding: 4px 8px; vertical-align: middle;">⚠️
+                SPECI</span>
+            {% endif %}
+        </div>
+        <div class="metar-actions">
+            <button class="btn btn-sm btn-outline" onclick="copyMetar()">📋 Copy</button>
+            <button class="btn btn-sm btn-outline" onclick="location.reload()">🔄 Refresh</button>
+            <span class="copy-feedback" id="metarCopyFeedback">Copied!</span>
+        </div>
+        <!-- Validation Display -->
+        <div id="metarValidation" style="margin-top: 12px; font-size: 0.85rem; font-family: 'Inter', sans-serif;">
+            <!-- Populated by dashboard.js -->
+        </div>
+    </div>
+
+    <!-- Decoded Parameters Panel -->
+    <div class="metar-decoded-panel" id="decodedPanel">
+        <div class="param-card">
+            <span class="param-label">🌡️ Temperature</span>
+            <span class="param-value" id="paramTemp">--</span>
+            <span class="param-unit">°C</span>
+        </div>
+        <div class="param-card">
+            <span class="param-label">💧 Dew Point</span>
+            <span class="param-value" id="paramDewpoint">--</span>
+            <span class="param-unit">°C</span>
+        </div>
+        <div class="param-card">
+            <span class="param-label">🌬️ Wind</span>
+            <span class="param-value" id="paramWind">--</span>
+            <span class="param-unit" id="paramWindDetail"></span>
+        </div>
+        <div class="param-card">
+            <span class="param-label">👁️ Visibility</span>
+            <span class="param-value" id="paramVis">--</span>
+            <span class="param-unit" id="paramVisUnit">m</span>
+            <div class="vis-bar">
+                <div class="vis-bar-fill" id="visBar" style="width:100%"></div>
+            </div>
+        </div>
+        <div class="param-card">
+            <span class="param-label">📊 QNH</span>
+            <span class="param-value" id="paramQNH">--</span>
+            <span class="param-unit">hPa</span>
+        </div>
+        <div class="param-card">
+            <span class="param-label">☁️ Cloud</span>
+            <span class="param-value" id="paramCloud" style="font-size:1.1rem">--</span>
+            <span class="param-unit" id="paramCloudExtra"></span>
+        </div>
+        <div class="param-card">
+            <span class="param-label">🌩️ Weather</span>
+            <span class="param-value" id="paramWeather" style="font-size:1.1rem">--</span>
+        </div>
+        <div class="param-card">
+            <span class="param-label">🕐 Obs Time</span>
+            <span class="param-value" id="paramTime" style="font-size:1.2rem">--:-- UTC</span>
+        </div>
+    </div>
+
+</div>
+{% endif %}
+
+<!-- ========== HISTORY TABLE ========== -->
+<div class="record-manager-card">
+    <div class="card-header"
+        style="padding: 0 0 15px 0; border-bottom: 1px solid var(--border-color); margin-bottom: 20px;">
+        <h3 class="card-title"><span class="icon">📋</span> METAR History</h3>
+    </div>
+    <div class="manager-controls">
+        <div class="button-group">
+            <button id="btn-today" class="toggle-btn active" onclick="loadView('today')">
+                Today <span id="count-today" class="badge">0</span>
+            </button>
+            <button id="btn-yesterday" class="toggle-btn" onclick="loadView('yesterday')">
+                Yesterday <span id="count-yesterday" class="badge">0</span>
+            </button>
+        </div>
+
+        <!-- DROPDOWN FILTER METAR / SPECI -->
+        <div class="filter-dropdown-wrapper" style="display: flex; align-items: center; gap: 8px; margin-left: auto; margin-right: 20px;">
+            <label for="reportTypeFilter" style="font-size: 0.85rem; color: var(--text-secondary); font-weight: 600; white-space: nowrap;">
+                Tipe Laporan:
+            </label>
+            <select id="reportTypeFilter" class="form-select" onchange="filterReportType()" 
+                style="padding: 6px 30px 6px 12px; border-radius: 6px; border: 1px solid var(--border-color); 
+                       background-color: var(--bg-card); color: var(--text-primary); font-size: 0.85rem; 
+                       cursor: pointer; appearance: none; min-width: 130px;
+                       background-image: url('data:image/svg+xml;charset=UTF-8,%3csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%2364748b\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'%3e%3cpolyline points=\'6 9 12 15 18 9\'%3e%3c/polyline%3e%3c/svg%3e'); 
+                       background-repeat: no-repeat; background-position: right 10px center; background-size: 14px;">
+                <option value="all">📋 Semua Data</option>
+                <option value="METAR">📡 METAR</option>
+                <option value="SPECI">⚠️ SPECI</option>
+            </select>
+        </div>
+
+        <div class="view-info">
+            <span id="display-date" style="font-weight: 700; color: var(--bmkg-primary);">-- --- ----</span>
+            <span class="live-dot"></span>
+        </div>
+    </div>
+
+    <div class="table-responsive">
+        <table id="metar-daily-table" class="data-table modern-table">
+            <thead>
+                <tr>
+                    <th class="col-time" style="text-transform: uppercase;">TIME UTC</th>
+                    <th class="col-station" style="text-transform: uppercase;">STATION</th>
+                    <th class="col-metar" style="text-transform: uppercase;">METAR DATA</th>
+                    <th class="col-status" style="text-transform: uppercase;">STATUS</th>
+                </tr>
+            </thead>
+            <tbody id="table-body">
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts_bottom %}
+<script>
+    // METAR page logic
+</script>
+{% endblock %}

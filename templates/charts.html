@@ -1,0 +1,119 @@
+{% extends "layout.html" %}
+
+{% block title %}Parameter Cuaca — METAR Auto Dashboard{% endblock %}
+
+{% block nav_active_charts %}active{% endblock %}
+
+{% block content %}
+<div class="card fade-in">
+    <div class="card-header" style="flex-wrap: wrap; gap: 10px;">
+        <h3 class="card-title"><span class="icon">📈</span> Parameter Cuaca</h3>
+        <span id="display-date" class="text-muted" style="font-size:0.8rem; margin-left: auto;">{{
+            history_start.split()[0] if history_start else '' }}</span>
+    </div>
+    <div style="padding: 0 var(--space-lg) var(--space-md);">
+        <div class="manager-controls" style="margin-bottom: 20px;">
+            <div class="button-group">
+                <button id="btn-today" class="toggle-btn active" onclick="loadView('today')">
+                    Today <span id="count-today"></span>
+                </button>
+                <button id="btn-yesterday" class="toggle-btn" onclick="loadView('yesterday')">
+                    Yesterday <span id="count-yesterday"></span>
+                </button>
+            </div>
+            <div class="flex gap-sm">
+                <button class="btn btn-sm btn-outline" onclick="location.reload()">🔄 Refresh</button>
+            </div>
+        </div>
+        <div style="color: var(--text-secondary); font-size: 0.9rem;">
+            Grafik ini menampilkan tren historis parameter cuaca berdasarkan rekaman METAR pada hari yang dipilih.
+        </div>
+    </div>
+</div>
+
+<!-- ========== CHARTS ========== -->
+<div class="card chart-card fade-in" style="animation-delay:0.1s">
+    <div class="card-header">
+        <h3 class="card-title"><span class="icon">🌡️</span> Trend Temperatur</h3>
+        <button class="btn btn-sm btn-outline" onclick="downloadChart('tempChart')">📥 Download</button>
+    </div>
+    <div class="chart-container">
+        <canvas id="tempChart"></canvas>
+    </div>
+    <div id="tempChart-minmax" class="chart-minmax-row loading"></div>
+    <div id="tempChart-info"
+        style="padding: 10px 16px; font-size: 0.85rem; color: var(--text-secondary); border-top: 1px solid var(--border-color);">
+        {% if history_start %}{{ history_start }} to {{ history_end }} • {{ history_count }} records (from
+        {{ history_source }}){% else %}Loading temperature trend data...{% endif %}
+    </div>
+</div>
+
+<div class="card chart-card fade-in" style="animation-delay:0.2s">
+    <div class="card-header">
+        <h3 class="card-title"><span class="icon">📊</span> Trend Tekanan (QNH)</h3>
+        <button class="btn btn-sm btn-outline" onclick="downloadChart('pressureChart')">📥 Download</button>
+    </div>
+    <div class="chart-container">
+        <canvas id="pressureChart"></canvas>
+    </div>
+    <div id="pressureChart-minmax" class="chart-minmax-row loading"></div>
+    <div id="pressureChart-info"
+        style="padding: 10px 16px; font-size: 0.85rem; color: var(--text-secondary); border-top: 1px solid var(--border-color);">
+        {% if history_start %}{{ history_start }} to {{ history_end }} • {{ history_count }} records (from
+        {{ history_source }}){% else %}Loading pressure trend data...{% endif %}
+    </div>
+</div>
+
+<div class="card chart-card fade-in" style="animation-delay:0.3s">
+    <div class="card-header">
+        <h3 class="card-title"><span class="icon">💨</span> Trend Kecepatan Angin</h3>
+        <button class="btn btn-sm btn-outline" onclick="downloadChart('windChart')">📥 Download</button>
+    </div>
+    <div class="chart-container">
+        <canvas id="windChart"></canvas>
+    </div>
+    <div id="windChart-minmax" class="chart-minmax-row loading"></div>
+    <div id="windChart-info"
+        style="padding: 10px 16px; font-size: 0.85rem; color: var(--text-secondary); border-top: 1px solid var(--border-color);">
+        {% if history_start %}{{ history_start }} to {{ history_end }} • {{ history_count }} records (from
+        {{ history_source }}){% else %}Loading wind trend data...{% endif %}
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts_bottom %}
+<!-- We inject the initial chart data rendered from the server -->
+{% if has_history %}
+<!-- Data Storage for Charts -->
+<div id="chart-data-store" style="display: none;" data-labels='{{ labels | tojson | safe }}'
+    data-temps='{{ temps | tojson | safe }}' data-pressures='{{ pressures | tojson | safe }}'
+    data-winds='{{ winds | tojson | safe }}' data-gusts='{{ gusts | tojson | safe }}'></div>
+
+<script>
+    // Trigger chart render explicitly since the HTML structure changed
+    document.addEventListener("DOMContentLoaded", function () {
+        const store = document.getElementById('chart-data-store');
+        if (!store) return;
+
+        try {
+            const labels = JSON.parse(store.getAttribute('data-labels'));
+            const temps = JSON.parse(store.getAttribute('data-temps'));
+            const pressures = JSON.parse(store.getAttribute('data-pressures'));
+            const winds = JSON.parse(store.getAttribute('data-winds'));
+            const gusts = JSON.parse(store.getAttribute('data-gusts'));
+
+            if (typeof updateCharts === 'function' && labels && labels.length > 0) {
+                console.log("Rendering initial charts from data-store");
+                // Needs a slight delay to ensure scripts (dashboard.js) are fully ready
+                setTimeout(() => {
+                    updateCharts(labels, temps, pressures, winds, gusts);
+                }, 300);
+            }
+        } catch (e) {
+            console.error("Error parsing chart data from store:", e);
+        }
+    });
+</script>
+{% endif %}
+{% endblock %}

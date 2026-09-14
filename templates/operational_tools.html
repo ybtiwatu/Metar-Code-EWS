@@ -1,0 +1,161 @@
+{% extends "layout.html" %}
+
+{% block title %}Operational Tools — METAR Auto Dashboard{% endblock %}
+
+{% block nav_active_tools %}active{% endblock %}
+
+{% block content %}
+<div class="card fade-in">
+    <div class="card-header">
+        <h3 class="card-title"><span class="icon">✈️</span> Operational Weather Tools</h3>
+        <span class="text-muted" style="font-size:0.8rem">Station: {{ station }}</span>
+    </div>
+    <div style="margin-bottom: var(--space-md); color: var(--text-secondary); font-size: 0.9rem;">
+        Suite of tools derived directly from the most recent METAR, supporting flight operations, 
+        briefings, and official reporting obligations like QAM.
+    </div>
+<!-- ========== METAR HERO SECTION ========== -->
+{% if latest %}
+<div class="metar-hero fade-in" style="animation-delay:0.1s">
+
+    <!-- Raw METAR Panel -->
+    <div class="metar-raw-panel {% if latest.status == 'danger' %}status-danger{% elif latest.status == 'warning' %}status-warning{% endif %}"
+        id="metarRawPanel">
+        <div class="panel-title">📡 RAW METAR DATA</div>
+        <div class="metar-raw-code" id="metarRawCode">
+            {{ latest.metar }}
+            {% if latest.report_type == 'COR' or 'COR' in latest.metar or 'CCA' in latest.metar %}
+            <span class="badge"
+                style="background-color: #f59e0b; color: #1e293b; margin-left: 10px; font-size: 0.75rem; padding: 4px 8px; vertical-align: middle;">⚠️
+                COR</span>
+            {% elif latest.report_type == 'AMD' or 'AMD' in latest.metar %}
+            <span class="badge"
+                style="background-color: #3b82f6; color: #ffffff; margin-left: 10px; font-size: 0.75rem; padding: 4px 8px; vertical-align: middle;">⚠️
+                AMD</span>
+            {% elif latest.report_type == 'SPECI' or 'SPECI' in latest.metar %}
+            <span class="badge"
+                style="background-color: #ef4444; color: #ffffff; margin-left: 10px; font-size: 0.75rem; padding: 4px 8px; vertical-align: middle;">⚠️
+                SPECI</span>
+            {% endif %}
+        </div>
+        <div class="metar-actions">
+            <button class="btn btn-sm btn-outline" onclick="copyMetar()">📋 Copy</button>
+            <button class="btn btn-sm btn-outline" onclick="location.reload()">🔄 Refresh</button>
+            <span class="copy-feedback" id="metarCopyFeedback">Copied!</span>
+        </div>
+        <!-- Validation Display -->
+        <div id="metarValidation" style="margin-top: 12px; font-size: 0.85rem; font-family: 'Inter', sans-serif;">
+            <!-- Populated by dashboard.js -->
+        </div>
+    </div>
+
+    <!-- Decoded Parameters Panel -->
+    <div class="metar-decoded-panel" id="decodedPanel">
+        <div class="param-card">
+            <span class="param-label">🌡️ Temperature</span>
+            <span class="param-value" id="paramTemp">--</span>
+            <span class="param-unit">°C</span>
+        </div>
+        <div class="param-card">
+            <span class="param-label">💧 Dew Point</span>
+            <span class="param-value" id="paramDewpoint">--</span>
+            <span class="param-unit">°C</span>
+        </div>
+        <div class="param-card">
+            <span class="param-label">🌬️ Wind</span>
+            <span class="param-value" id="paramWind">--</span>
+            <span class="param-unit" id="paramWindDetail"></span>
+        </div>
+        <div class="param-card">
+            <span class="param-label">👁️ Visibility</span>
+            <span class="param-value" id="paramVis">--</span>
+            <span class="param-unit" id="paramVisUnit">m</span>
+            <div class="vis-bar">
+                <div class="vis-bar-fill" id="visBar" style="width:100%"></div>
+            </div>
+        </div>
+        <div class="param-card">
+            <span class="param-label">📊 QNH</span>
+            <span class="param-value" id="paramQNH">--</span>
+            <span class="param-unit">hPa</span>
+        </div>
+        <div class="param-card">
+            <span class="param-label">☁️ Cloud</span>
+            <span class="param-value" id="paramCloud" style="font-size:1.1rem">--</span>
+            <span class="param-unit" id="paramCloudExtra"></span>
+        </div>
+        <div class="param-card">
+            <span class="param-label">🌩️ Weather</span>
+            <span class="param-value" id="paramWeather" style="font-size:1.1rem">--</span>
+        </div>
+        <div class="param-card">
+            <span class="param-label">🕐 Obs Time (UTC)</span>
+            <span class="param-value" id="paramTime" style="font-size:1.2rem">--:-- UTC</span>
+        </div>
+    </div>
+
+</div>
+{% endif %}
+
+<!-- ========== CROSSWIND CALCULATOR ========== -->
+<div class="card crosswind-card fade-in" style="animation-delay:0.1s">
+    <div class="card-header">
+        <h3 class="card-title"><span class="icon">✈️</span> Runway Crosswind Calculator</h3>
+    </div>
+    <div class="runway-selector" id="runwaySelector">
+        <button class="runway-btn active" data-heading="100" onclick="selectRunway(this, 100)">RWY 10</button>
+        <button class="runway-btn" data-heading="280" onclick="selectRunway(this, 280)">RWY 28</button>
+    </div>
+    <div class="crosswind-result" id="crosswindResult">
+        <div class="xwind-item xw-safe">
+            <div class="xw-label">Headwind</div>
+            <div class="xw-value" id="xwHead">-- kt</div>
+            <span class="xw-status" id="xwHeadStatus">--</span>
+        </div>
+        <div class="xwind-item xw-safe">
+            <div class="xw-label">Crosswind</div>
+            <div class="xw-value" id="xwCross">-- kt</div>
+            <span class="xw-status" id="xwCrossStatus">--</span>
+        </div>
+        <div class="xwind-item xw-safe">
+            <div class="xw-label">Tailwind</div>
+            <div class="xw-value" id="xwTail">-- kt</div>
+            <span class="xw-status" id="xwTailStatus">--</span>
+        </div>
+    </div>
+</div>
+
+<!-- ========== QAM & NARRATIVE ========== -->
+<div class="grid-2 fade-in" style="animation-delay:0.2s">
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title"><span class="icon">📄</span> QAM / MET Report</h3>
+            <div class="flex gap-sm">
+                <button class="btn btn-sm btn-outline" onclick="copyQam()">📋 Copy</button>
+                <a href="/download_qam?station={{ station }}&qam={{ qam | urlencode }}" class="btn btn-sm btn-outline">📥 Download</a>
+            </div>
+        </div>
+        <pre class="qam-display" id="qamDisplay">{% if qam %}{{ qam }}{% else %}Wait for the latest METAR data...{% endif %}</pre>
+        <span class="copy-feedback" id="qamCopyFeedback">Copied!</span>
+    </div>
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title"><span class="icon">📝</span> Narasi Cuaca</h3>
+        </div>
+        <div class="narrative-display" id="narrativeDisplay">{% if narrative %}{{ narrative }}{% else %}Waiting for data update...{% endif %}</div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts_bottom %}
+<!-- Initialize the page state with whatever data we got from the server directly -->
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        console.log("Operational Tools page loaded");
+        // Update crosswind visually if we already loaded it via socket/fetch
+        if (window.lastKnownMetar && typeof updateDOM === 'function') {
+            updateDOM(window.lastKnownMetar, "{{ station }}");
+        }
+    });
+</script>
+{% endblock %}
