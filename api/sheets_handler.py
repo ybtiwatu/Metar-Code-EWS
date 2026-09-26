@@ -8,7 +8,7 @@ import time
 import sys
 
 # Spreadsheet ID from user
-SPREADSHEET_ID = "14KxeMPmwYk-YPZgEYUEeXYv94aItgIbaqzk5GhrPv5c"
+SPREADSHEET_ID = "1wtngMXZTznjJGtR3WcDES71aup4EDWCRocQyiWblAkU"
 
 class GoogleSheetHandler:
     def __init__(self):
