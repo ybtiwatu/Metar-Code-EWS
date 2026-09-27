@@ -110,7 +110,7 @@ class GoogleSheetHandler:
                 time_str = str(time).strip("'\"")
 
             print(f"[SHEETS] Appending row: {station}, {time_str}", file=sys.stderr)
-            sheet.append_row([station, time_str, metar])
+            sheet.append_row([station, time_str, metar], value_input_option='USER_ENTERED')
             print(f"[SHEETS] [SUCCESS] Data successfully saved to Google Sheets for {station}", file=sys.stderr)
             
             # --- CACHE INVALIDATION ---
