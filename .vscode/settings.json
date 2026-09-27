@@ -14,5 +14,6 @@
     "yaml.customTags": [
         "!secret",
         "tag:yaml.org,2002:js/undefined"
-    ]
+    ],
+    "python-envs.defaultEnvManager": "ms-python.python:system"
 }
