@@ -107,22 +107,6 @@
 </div>
 
 
-    <!-- Filtered Wind Rose -->
-    <div class="card flex flex-col fade-in">
-        <div class="card-header">
-            <h3 class="card-title"><span class="icon">🧭</span> Wind Rose (Filtered Period)</h3>
-            <div class="flex items-center gap-sm">
-                <span id="windroseHistory-badge" class="badge" 
-                    style="background-color: #3b82f6; color: white;">Filtered</span>
-                <button class="btn btn-sm btn-outline" onclick="downloadChart('windRoseHistory')">📥 Download</button>
-            </div>
-        </div>
-        <div id="windRoseHistory" style="height:400px;"></div>
-        <div id="windroseHistory-info"
-            style="padding: 10px 16px; font-size: 0.85rem; color: var(--text-secondary); border-top: 1px solid var(--border-color);">
-            Showing wind distribution for the selected date range.
-        </div>
-    </div>
 {% endif %}
 {% endif %}
 
@@ -137,8 +121,6 @@
     const winds = JSON.parse('{{ winds | tojson | safe }}');
     const gusts = JSON.parse('{{ gusts | tojson | safe }}');
     const thunder_flags = JSON.parse('{{ thunder_flags | tojson | safe }}');
-    const wind_dirs = JSON.parse('{{ wind_dirs | tojson | safe }}');
-    const utc_wib_labels = JSON.parse('{{ utc_wib_labels | tojson | safe }}');
 
     document.addEventListener('DOMContentLoaded', function() {
 
@@ -370,92 +352,6 @@
             }
         });
 
-        const validWind = wind_dirs.map((dir, i) => {
-            if (dir !== null && winds[i] !== null) {
-                return { 
-                    dir: parseInt(dir), 
-                    speed: winds[i],
-                    timeLabel: utc_wib_labels[i] || labels[i]
-                };
-            }
-            return null;
-        }).filter(x => x);
-
-        // --- Wind rose grouped by direction and speed ---
-        function binWindData(rawPoints) {
-            const sectors_list = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
-            const bins = [5, 10, 15, 20, 25, 30, Infinity];
-            const bin_labels = ["0-5", "5-10", "10-15", "15-20", "20-25", "25-30", ">30"];
-
-            let matrix = Array.from({ length: 8 }, () => Array(7).fill(0));
-            let time_matrix = Array.from({ length: 8 }, () => Array.from({ length: 7 }, () => []));
-            let calm_count = 0;
-            let total_valid = 0;
-
-            rawPoints.forEach(p => {
-                total_valid++;
-                const speed = parseFloat(p.speed);
-                if (speed <= 0) {
-                    calm_count++;
-                    return;
-                }
-
-                const direction = parseFloat(p.dir);
-                let idx = Math.floor(((direction + 22.5) % 360) / 45);
-                
-                let bin_idx = 0;
-                for (let i = 0; i < bins.length; i++) {
-                    if (speed <= bins[i]) {
-                        bin_idx = i;
-                        break;
-                    }
-                }
-
-                if (idx < 8) {
-                    matrix[idx][bin_idx]++;
-                    if (p.timeLabel) time_matrix[idx][bin_idx].push(p.timeLabel);
-                }
-            });
-
-            const calm_percent = total_valid > 0 ? ((calm_count / total_valid) * 100).toFixed(2) : 0;
-            const binned_results = sectors_list.map((sector, i) => {
-                const sector_bins = bin_labels.map((label, j) => {
-                    const count = matrix[i][j];
-                    const percent = total_valid > 0 ? (count / total_valid) * 100 : 0;
-                    const times = [...new Set(time_matrix[i][j])].sort().join('<br>');
-                    return { label, count, percentage: parseFloat(percent.toFixed(2)), times };
-                });
-                return { sector, angle: i * 45, bins: sector_bins };
-            });
-
-            return {
-                sectors: binned_results,
-                calm_percent,
-                total_count: total_valid,
-                bin_labels
-            };
-        }
-
-        if (validWind.length > 0) {
-            const binnedData = binWindData(validWind);
-            const infoEl = document.getElementById('windroseHistory-info');
-            const badgeEl = document.getElementById('windroseHistory-badge');
-            
-            const startLabel = "{{ start_date }}".replace('T', ' ');
-            const endLabel = "{{ end_date }}".replace('T', ' ');
-            const subLabel = `${startLabel} to ${endLabel} • ${validWind.length} records found`;
-
-            if (infoEl) infoEl.textContent = subLabel;
-            if (badgeEl) badgeEl.textContent = `${validWind.length} Records`;
-
-            // Use the high-fidelity render from dashboard.js
-            if (typeof renderWindRose === 'function') {
-                renderWindRose('windRoseHistory', { binned: binnedData }, {
-                    title: 'History Wind Rose',
-                    subLabel: subLabel
-                });
-            }
-        }
         // Trigger min/max indicators update
         if (typeof updateChartMinMax === 'function') {
             updateChartMinMax(labels, temps, pressures, winds, gusts);
@@ -464,15 +360,6 @@
     }); // end DOMContentLoaded
 
     function downloadChart(chartId) {
-        if (chartId === 'windRoseHistory') {
-            Plotly.downloadImage('windRoseHistory', { 
-                format: 'png', 
-                width: 900, 
-                height: 700, 
-                filename: 'windRose_History' 
-            });
-            return;
-        }
         const c = document.getElementById(chartId);
         if (!c) return;
         const link = document.createElement('a');

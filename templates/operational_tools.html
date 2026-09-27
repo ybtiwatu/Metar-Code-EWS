@@ -97,34 +97,6 @@
 </div>
 {% endif %}
 
-<!-- ========== CROSSWIND CALCULATOR ========== -->
-<div class="card crosswind-card fade-in" style="animation-delay:0.1s">
-    <div class="card-header">
-        <h3 class="card-title"><span class="icon">✈️</span> Runway Crosswind Calculator</h3>
-    </div>
-    <div class="runway-selector" id="runwaySelector">
-        <button class="runway-btn active" data-heading="100" onclick="selectRunway(this, 100)">RWY 10</button>
-        <button class="runway-btn" data-heading="280" onclick="selectRunway(this, 280)">RWY 28</button>
-    </div>
-    <div class="crosswind-result" id="crosswindResult">
-        <div class="xwind-item xw-safe">
-            <div class="xw-label">Headwind</div>
-            <div class="xw-value" id="xwHead">-- kt</div>
-            <span class="xw-status" id="xwHeadStatus">--</span>
-        </div>
-        <div class="xwind-item xw-safe">
-            <div class="xw-label">Crosswind</div>
-            <div class="xw-value" id="xwCross">-- kt</div>
-            <span class="xw-status" id="xwCrossStatus">--</span>
-        </div>
-        <div class="xwind-item xw-safe">
-            <div class="xw-label">Tailwind</div>
-            <div class="xw-value" id="xwTail">-- kt</div>
-            <span class="xw-status" id="xwTailStatus">--</span>
-        </div>
-    </div>
-</div>
-
 <!-- ========== QAM & NARRATIVE ========== -->
 <div class="grid-2 fade-in" style="animation-delay:0.2s">
     <div class="card">
@@ -152,7 +124,7 @@
 <script>
     document.addEventListener("DOMContentLoaded", function() {
         console.log("Operational Tools page loaded");
-        // Update crosswind visually if we already loaded it via socket/fetch
+        // Refresh decoded parameters if the latest METAR is already available.
         if (window.lastKnownMetar && typeof updateDOM === 'function') {
             updateDOM(window.lastKnownMetar, "{{ station }}");
         }

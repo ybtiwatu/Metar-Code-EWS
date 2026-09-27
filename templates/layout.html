@@ -125,11 +125,6 @@
                     <span class="label">Parameter Cuaca</span>
                 </a>
 
-                <a href="/wind_analysis" class="sidebar-link {% block nav_active_wind %}{% endblock %}" id="nav-wind">
-                    <span class="icon">🧭</span>
-                    <span class="label">Analisis Angin</span>
-                </a>
-
                 <!--<a href="/weather_analysis" class="sidebar-link {% block nav_active_weather %}{% endblock %}" id="nav-weather">
                     <span class="icon">🌩️</span>
                     <span class="label">Weather Analysis</span>
@@ -204,369 +199,6 @@
     {% block extra_scripts_top %}{% endblock %}
 
     <script defer src="{{ url_for('static', filename='dashboard.js') }}?v=1.4"></script>
-
-    <!-- ============================================
-         WIND INVESTIGATION LOG
-         ============================================ -->
-    <button class="wind-log-fab" id="windLogFab" onclick="toggleWindLogPanel()" title="Wind Investigation Log">
-        <span class="help-fab-icon">🛬</span>
-        <span class="help-fab-text">Wind Log</span>
-    </button>
-    <style>
-        .wind-log-fab {
-            position: fixed;
-            bottom: 84px;
-            /* 60px above the help-fab (24px + 60px) */
-            right: 20px;
-            background: #ef4444;
-            color: white;
-            border: none;
-            border-radius: 50px;
-            width: 48px;
-            height: 48px;
-            padding: 0;
-            cursor: pointer;
-            box-shadow: 0 4px 15px rgba(239, 68, 68, 0.4);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 1100;
-            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-            overflow: hidden;
-            white-space: nowrap;
-        }
-
-        .wind-log-fab:hover {
-            width: 150px;
-            transform: translateY(-5px);
-            box-shadow: 0 8px 25px rgba(239, 68, 68, 0.6);
-            background: #dc2626;
-            padding: 0 20px;
-            justify-content: flex-start;
-            gap: 10px;
-        }
-
-        .wind-log-fab .help-fab-text {
-            opacity: 0;
-            max-width: 0;
-            transition: all 0.3s ease;
-            pointer-events: none;
-            color: white;
-            font-weight: 600;
-        }
-
-        .wind-log-fab:hover .help-fab-text {
-            opacity: 1;
-            max-width: 100px;
-            pointer-events: auto;
-        }
-
-        @media (max-width: 768px) {
-            .wind-log-fab:hover {
-                width: 48px;
-                padding: 0;
-                justify-content: center;
-            }
-        }
-
-        .wind-log-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(15, 23, 42, 0.7);
-            backdrop-filter: blur(4px);
-            z-index: 9999;
-            opacity: 0;
-            visibility: hidden;
-            transition: all 0.3s ease;
-        }
-
-        .wind-log-overlay.active {
-            opacity: 1;
-            visibility: visible;
-        }
-
-        .wind-log-panel {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -45%);
-            width: 95%;
-            max-width: 1300px;
-            max-height: 85vh;
-            background: #FFFFFF;
-            /* Forced White Background */
-            color: #1e293b;
-            /* Forced Dark Text for readability */
-            border-radius: 12px;
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-            z-index: 10000;
-            opacity: 0;
-            visibility: hidden;
-            transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-            display: flex;
-            flex-direction: column;
-            border: 1px solid #e2e8f0;
-            overflow: hidden;
-        }
-
-        .wind-log-panel.active {
-            transform: translate(-50%, -50%);
-            opacity: 1;
-            visibility: visible;
-        }
-
-        .wind-log-header {
-            background: #1E3A5F;
-            color: white;
-            padding: 15px 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .wind-log-header h3 {
-            margin: 0;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            font-size: 1.2rem;
-        }
-
-        .wind-log-controls {
-            padding: 15px 20px;
-            border-bottom: 1px solid #e2e8f0;
-            display: flex;
-            flex-wrap: wrap;
-            gap: 15px;
-            align-items: flex-end;
-            background: #f8fafc;
-            /* Subtle grey difference */
-        }
-
-        .wind-log-controls label {
-            color: #475569;
-            font-weight: 600;
-        }
-
-        .wind-log-controls .form-group {
-            margin: 0;
-        }
-
-        .wind-log-controls .form-input {
-            padding: 8px 12px;
-            height: 38px;
-            background: #ffffff;
-            border: 1px solid #cbd5e1;
-            color: #1e293b;
-        }
-
-        .wind-log-stats {
-            display: flex;
-            gap: 15px;
-            padding: 15px 20px;
-            background: #ffffff;
-            border-bottom: 1px solid #e2e8f0;
-        }
-
-        .wind-log-stat-card {
-            flex: 1;
-            background: #f8fafc;
-            padding: 12px;
-            border-radius: 8px;
-            border: 1px solid #e2e8f0;
-            text-align: center;
-        }
-
-        .wind-log-stat-value {
-            font-size: 1.5rem;
-            font-weight: 700;
-            color: #1e3a5f;
-            margin-top: 5px;
-        }
-
-        .wind-log-stat-value.danger {
-            color: #ef4444;
-        }
-
-        .wind-log-body {
-            padding: 0;
-            flex: 1;
-            overflow-y: auto;
-            background: #ffffff;
-        }
-
-        .wind-log-body table {
-            color: #1e293b;
-        }
-
-        .wind-log-body th {
-            background: #edf2f7 !important;
-            color: #4a5568 !important;
-            border-right: 2px solid #223850;
-        }
-
-        .wind-log-body td {
-            border-bottom: 1px solid #edf2f7;
-            border-right: 2px solid #223850;
-        }
-
-        .wind-log-body th:last-child,
-        .wind-log-body td:last-child {
-            border-right: none;
-        }
-
-        .xw-danger-row {
-            background: rgba(239, 68, 68, 0.08) !important;
-        }
-
-        .metar-boundary td {
-            border-top: 2px solid #1e293b !important;
-        }
-
-        .wind-log-panel .text-muted {
-            color: #64748b !important;
-        }
-
-        /* DARK MODE SUPPORT */
-        [data-theme='dark'] .wind-log-panel {
-            background: #0f172a;
-            color: #f8fafc;
-            border-color: #1e293b;
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8);
-        }
-
-        [data-theme='dark'] .wind-log-controls {
-            background: #1e293b;
-            border-bottom-color: #334155;
-        }
-
-        [data-theme='dark'] .wind-log-controls label {
-            color: #94a3b8;
-        }
-
-        [data-theme='dark'] .wind-log-controls .form-input {
-            background: #0f172a;
-            color: #f8fafc;
-            border-color: #334155;
-        }
-
-        [data-theme='dark'] .wind-log-stats {
-            background: #0f172a;
-            border-bottom-color: #334155;
-        }
-
-        [data-theme='dark'] .wind-log-stat-card {
-            background: #1e293b;
-            border-color: #334155;
-        }
-
-        [data-theme='dark'] .wind-log-stat-value {
-            color: #f1f5f9;
-        }
-
-        [data-theme='dark'] .wind-log-body {
-            background: #0f172a;
-        }
-
-        [data-theme='dark'] .wind-log-body table {
-            color: #f1f5f9;
-        }
-
-        [data-theme='dark'] .wind-log-body th {
-            background: #1e293b !important;
-            color: #cbd5e1 !important;
-            border-right-color: #334155;
-        }
-
-        [data-theme='dark'] .wind-log-body td {
-            border-bottom-color: #1e293b;
-            border-right-color: #334155;
-        }
-
-        [data-theme='dark'] .metar-boundary td {
-            border-top-color: #cbd5e1 !important;
-        }
-
-        [data-theme='dark'] .wind-log-panel .text-muted {
-            color: #94a3b8 !important;
-        }
-
-        [data-theme='dark'] .xw-danger-row {
-            background: rgba(239, 68, 68, 0.15) !important;
-        }
-    </style>
-
-    <div class="wind-log-overlay" id="windLogOverlay" onclick="closeWindLogPanel()"></div>
-    <div class="wind-log-panel" id="windLogPanel">
-        <div class="wind-log-header">
-            <h3><span>🛬</span> Wind Log History</h3>
-            <button class="help-modal-close" onclick="closeWindLogPanel()"
-                style="color:white; opacity:0.8; background:none; border:none; font-size:1.5rem; cursor:pointer;">✕</button>
-        </div>
-
-        <div class="wind-log-controls">
-            <div class="form-group" style="width: 120px;">
-                <label>Runway</label>
-                <select id="windLogRunwayFilter" class="form-input" onchange="refreshWindLogTable()">
-                    <option value="">Semua RWY</option>
-                    <option value="10">RWY 10</option>
-                    <option value="28">RWY 28</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label>Mulai Tanggal (UTC)</label>
-                <input type="date" id="windLogStart" class="form-input" onchange="refreshWindLogTable()">
-            </div>
-            <div class="form-group">
-                <label>Sampai Tanggal (UTC)</label>
-                <input type="date" id="windLogEnd" class="form-input" onchange="refreshWindLogTable()">
-            </div>
-            <div style="margin-left: auto; display: flex; gap: 10px;">
-                <button class="btn btn-outline" onclick="logCurrentWind()">📝 Log Current</button>
-                <button class="btn btn-outline" onclick="exportWindLogs()">📥 Export CSV</button>
-                <button class="btn btn-primary" onclick="refreshWindLogTable()">🔄 Refresh</button>
-            </div>
-        </div>
-
-        <div class="wind-log-stats">
-            <div class="wind-log-stat-card">
-                <div class="text-muted" style="font-size: 0.8rem; text-transform: uppercase;">Total Records</div>
-                <div class="wind-log-stat-value" id="windLogTotal">0</div>
-            </div>
-            <div class="wind-log-stat-card">
-                <div class="text-muted" style="font-size: 0.8rem; text-transform: uppercase;">Danger Exceedances</div>
-                <div class="wind-log-stat-value danger" id="windLogDanger">0</div>
-            </div>
-        </div>
-
-        <div class="wind-log-body">
-            <table class="data-table modern-table" style="margin:0;">
-                <thead style="position: sticky; top: 0; z-index: 10;">
-                    <tr>
-                        <th>TIME UTC</th>
-                        <th>METAR RAW</th>
-                        <th>STATION</th>
-                        <th>RWY</th>
-                        <th>RWY HDG</th>
-                        <th>WIND DIR</th>
-                        <th>WIND SPEED</th>
-                        <th>WIND GUST</th>
-                        <th>HEADWIND</th>
-                        <th>CROSSWIND</th>
-                        <th>TAILWIND</th>
-                        <th>CROSS STATUS</th>
-                        <th>TAIL STATUS</th>
-                    </tr>
-                </thead>
-                <tbody id="windLogTableBody">
-                    <!-- Loaded via JS -->
-                </tbody>
-            </table>
-        </div>
-    </div>
 
     <!-- ============================================
          MANUAL EBOOK MODAL
@@ -665,10 +297,7 @@
                     </h5>
                     <ul class="help-list">
                         <li>Grafik trend suhu, tekanan udara (QNH), dan kecepatan angin</li>
-                        <li>Wind Compass arah angin real-time dengan indikator gust</li>
-                        <li>Dual Wind Rose: 24 jam terakhir &amp; 1 bulan penuh sebelumnya</li>
-                        <li>Crosswind &amp; Tailwind Calculator untuk RWY 10/28</li>
-                        <li>Semua grafik dan wind rose dapat di-download sebagai PNG</li>
+                        <li>Grafik tren suhu, tekanan udara (QNH), dan kecepatan angin dapat di-download sebagai PNG</li>
                     </ul>
                 </div>
 
@@ -701,7 +330,6 @@
                         <li>Manual METAR Parser — decode METAR secara mandiri</li>
                         <li>Riwayat data METAR berdasarkan tanggal dengan filter WIB/UTC</li>
                         <li>Export data ke CSV dan sinkronisasi Google Sheets</li>
-                        <li>Wind Investigation Log — catatan crosswind per runway</li>
                     </ul>
                 </div>
             </div>
@@ -717,7 +345,7 @@
                         <span class="help-step">🏠</span>
                         <div>
                             <strong>Dashboard</strong>
-                            <p>Tampilan utama dengan data METAR real-time, grafik, wind compass, wind rose, dan narasi
+                            <p>Tampilan utama dengan data METAR real-time, grafik, dan narasi
                                 cuaca.</p>
                         </div>
                     </div>
@@ -736,14 +364,6 @@
                         </div>
                     </div>
                     <div class="help-usage-item">
-                        <span class="help-step">🧭</span>
-                        <div>
-                            <strong>Analisis Angin</strong>
-                            <p>Wind Rose, Wind Compass, dan Crosswind Calculator untuk analisis profil angin bandara.
-                            </p>
-                        </div>
-                    </div>
-                    <div class="help-usage-item">
                         <span class="help-step">📅</span>
                         <div>
                             <strong>Cari Riwayat</strong>
@@ -755,13 +375,6 @@
                         <div>
                             <strong>Parser Manual</strong>
                             <p>Input kode METAR secara manual untuk di-decode, validasi, dan membuat narasi cuaca.</p>
-                        </div>
-                    </div>
-                    <div class="help-usage-item">
-                        <span class="help-step">🛬</span>
-                        <div>
-                            <strong>Wind Log History</strong>
-                            <p>Tombol melayang di kanan bawah — catatan crosswind/tailwind untuk evaluasi runway.</p>
                         </div>
                     </div>
                 </div>
@@ -800,7 +413,7 @@
                         <span class="help-step">4</span>
                         <div>
                             <strong>Download Data</strong>
-                            <p>Klik tombol 📥 pada grafik atau wind rose untuk menyimpan visualisasi sebagai PNG.</p>
+                            <p>Klik tombol 📥 pada grafik untuk menyimpan visualisasi sebagai PNG.</p>
                         </div>
                     </div>
                 </div>
@@ -820,10 +433,6 @@
                     <div class="help-control-item">
                         <span class="help-key">🔊</span>
                         <span>Sound ON/OFF — aktifkan alarm suara peringatan dini</span>
-                    </div>
-                    <div class="help-control-item">
-                        <span class="help-key">🛬</span>
-                        <span>Wind Log History — buka Wind Investigation Log untuk analisis crosswind</span>
                     </div>
                     <div class="help-control-item">
                         <span class="help-key">❓</span>

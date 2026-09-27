@@ -24,176 +24,6 @@ try:
     from .sheets_handler import sheets_handler  # type: ignore
 except (ImportError, ValueError):
     from sheets_handler import sheets_handler  # type: ignore
-# Global Caching for Polling Efficiency - VERCEL OPTIMIZED
-_last_fetch_time = 0
-_cached_metar = None
-CACHE_TTL = 20  # 20 detik untuk polling data (mempercepat real-time update)
-
-# Tambahkan cache untuk history API
-_cached_history = None
-_history_cache_time = 0
-HISTORY_CACHE_TTL = 600  # 10 menit untuk history
-
-# Track last successful collection per station
-_last_collection = {
-    'WARR': {'time': None, 'metar': None, 'attempts': 0}
-}
-
-def format_indonesian_date(dt):
-    """Format datetime ke format Indonesia: Kamis, 02 April 2026"""
-    days = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"]
-    months = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", 
-              "Juli", "Agustus", "September", "Oktober", "November", "Desember"]
-    
-    day_name = days[dt.weekday()]
-    month_name = months[dt.month - 1]   
-    
-    return f"{day_name}, {dt.day:02d} {month_name} {dt.year}"
-
-def bin_wind_data(records):
-    """
-    Bin raw wind records into 16 sectors and 7 speed categories.
-    Uses standard wind-direction sectors and speed intervals.
-    Sectors: N, NE, E, SE, S, SW, W, NW (8 Sectors)
-    Bins: 0-5, 5-10, 10-15, 15-20, 20-25, 25-30, >30 (knots)
-    """
-    sectors_list = [
-        "N", "NE", "E", "SE", "S", "SW", "W", "NW"
-    ]
-    # Speed bins (upper limits)
-    bins = [5, 10, 15, 20, 25, 30, float('inf')]
-    bin_labels = ["0-5", "5-10", "10-15", "15-20", "20-25", "25-30", ">30"]
-    
-    # Initialize counts: matrix[sector_idx][bin_idx]
-    matrix = [[0 for _ in range(len(bins))] for _ in range(len(sectors_list))]
-    # Track times per sector/bin for hover
-    time_matrix = [[[] for _ in range(len(bins))] for _ in range(len(sectors_list))]
-    calm_count = 0
-    total_valid = 0
-    
-    for r in records:
-        try:
-            speed_val = r.get("speed")
-            speed = float(speed_val) if speed_val is not None else 0
-            direction_raw = r.get("dir")
-            
-            # Count towards total for percentage base
-            total_valid += 1
-            
-            # Calm check: 0 KT or VRB
-            if speed <= 0 or direction_raw == "VRB" or direction_raw is None:
-                calm_count += 1
-                continue
-                
-            direction = float(direction_raw)
-            # Map direction (0-360) to sector index (0-7)
-            # North (0) is centered at -22.5 to 22.5.
-            idx = int(((direction + 22.5) % 360) / 45)
-            
-            # Map speed to bin index
-            bin_idx = 0
-            for i, limit in enumerate(bins):
-                if speed <= limit:
-                    bin_idx = i
-                    break
-            
-            if idx < len(sectors_list):
-                matrix[idx][bin_idx] += 1
-                # Store time info for hover
-                utc_t = r.get("utc_time", "")
-                wib_t = r.get("wib_time", "")
-                if utc_t:
-                    time_matrix[idx][bin_idx].append({"utc": utc_t, "wib": wib_t})
-        except:
-            continue
-            
-    # Calculate results
-    binned_results = []
-    calm_percent = (calm_count / total_valid * 100) if total_valid > 0 else 0
-    
-    for i, sector in enumerate(sectors_list):
-        sector_bins = []
-        for j, label in enumerate(bin_labels):
-            count = matrix[i][j]
-            percent = (count / total_valid * 100) if total_valid > 0 else 0
-            # Build compact time summary for hover (each record on its own line)
-            times = time_matrix[i][j]
-            time_summary = ""
-            if times:
-                # Pair UTC only, one per line
-                lines = []
-                seen = set()
-                for t in sorted(times, key=lambda x: x["utc"]):
-                    utc_val = t["utc"]
-                    if utc_val not in seen:
-                        seen.add(utc_val)
-                        lines.append(utc_val)
-                time_summary = "<br>".join(lines)
-            sector_bins.append({
-                "label": label,
-                "count": count,
-                "percentage": round(percent, 2),
-                "times": time_summary
-            })
-        binned_results.append({
-            "sector": sector,
-            "angle": i * 45,
-            "bins": sector_bins
-        })
-        
-    return {
-        "sectors": binned_results,
-        "calm_percent": round(calm_percent, 2),
-        "total_count": total_valid,
-        "bin_labels": bin_labels
-    }
-
-# Resolve absolute paths for Vercel
-# Vercel structured as /var/task/api/index.py
-current_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.dirname(current_dir)
-template_dir = os.path.join(project_root, "templates")
-static_dir = os.path.join(project_root, "static")
-
-app = Flask(__name__, 
-            template_folder=template_dir, 
-            static_folder=static_dir)
-application = app # Alias for compatibility
-
-# ============ ADMIN AUTH CONFIGURATION ============
-# Default fallback password hash adalah representasi aman dari "juanda$2026"
-DEFAULT_HASH = "scrypt:32768:8:1$BtddDVF5DqG1GpWk$6aa36ddf49dd394f7e37ced0ff5bc61eab47fa4054b2397497b781d2d6e571992f4ee3c58b456b9548431e272e142e78a2199f99ca1ab3a87bdba8dce17b840b"
-
-ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "admin")
-ADMIN_PASSWORD_HASH = os.environ.get("ADMIN_PASSWORD_HASH", DEFAULT_HASH)
-
-# GUEST AUTH CONFIGURATION (Public access)
-GUEST_USERNAME = "guest"
-GUEST_PASSWORD_HASH = "scrypt:32768:8:1$h5GjkYvtTBvYwzoZ$84a0e7593507070235793c04e16977f83400e7b9038c399a24d704cd49b5241be10bd1a6c5a8f681d5a2d76691f60c680b121e8a838cd0a6286425b856a5bfff"
-
-
-# Session secret tetap agar session tidak expired saat cold start
-app.secret_key = os.environ.get("SECRET_KEY", "46f05c593c66cab7e02c330ec1671298d03bedfdb08350bf485aed4a8b0d2b82")
-
-# Session timeout (30 menit idle)
-SESSION_TIMEOUT = 30 * 60
-
-# Session cookie configuration (production-grade)
-app.config.update(
-    PERMANENT_SESSION_LIFETIME=timedelta(minutes=30),
-    SESSION_COOKIE_NAME='metar_session',
-    SESSION_COOKIE_HTTPONLY=True,       # Tidak bisa diakses JavaScript
-    SESSION_COOKIE_SAMESITE='Lax',      # CSRF protection
-    SESSION_COOKIE_PATH='/',            # Berlaku untuk seluruh domain
-)
-
-# Hanya set SECURE cookie di production (HTTPS)
-if os.environ.get("VERCEL") or os.environ.get("VERCEL_ENV"):
-    app.config['SESSION_COOKIE_SECURE'] = True
-
-def login_required(f):
-    """Decorator proteksi untuk akses web/UI — redirect ke /login"""
-    @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'admin_logged_in' not in session:
             if request.is_json or request.path.startswith('/api/'):
@@ -1331,7 +1161,6 @@ def api_narrative(station_code):
 # =========================
 # API CROSSWIND CALCULATOR
 # =========================
-@app.route("/api/crosswind")
 @admin_only_api
 def api_crosswind():
     """Calculate crosswind components"""
@@ -1362,7 +1191,6 @@ LAST_LOGGED_WIND = {
     '28': ''
 }
 
-@app.route("/api/log-crosswind", methods=["POST"])
 @admin_only_api
 def log_crosswind():
     global LAST_LOGGED_WIND
@@ -1412,7 +1240,6 @@ def log_crosswind():
         print(f"[WIND LOG] Critical Exception: {traceback.format_exc()}", file=sys.stderr)
         return jsonify({"error": str(e)}), 500
 
-@app.route("/api/wind-logs")
 @admin_only_api
 def get_wind_logs():
     """Ambil history perhitungan crosswind (hybrid)"""
@@ -1512,7 +1339,6 @@ def get_wind_logs():
         print(f"[WIND LOG] Error reading logs: {e}", file=sys.stderr)
         return jsonify({"error": str(e)}), 500
 
-@app.route("/api/wind-logs/by-metar")
 @admin_only_api
 def get_wind_logs_by_metar():
     """Ambil wind logs yang dikelompokkan per METAR timestamp"""
@@ -1558,7 +1384,6 @@ def get_wind_logs_by_metar():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route("/api/wind-logs/export")
 @admin_only_api
 def export_wind_logs():
     """Export wind logs ke CSV untuk investigasi"""
@@ -1603,7 +1428,6 @@ def export_wind_logs():
 # =========================
 # API WIND ROSE - Dual Time Range Filter
 # =========================
-@app.route("/api/windrose/<station>")
 @admin_only_api
 def windrose_api(station):
     """API endpoint untuk Wind Rose 24 jam terakhir - FETCH FROM SHEETS for Real-time Sync"""
@@ -1731,7 +1555,6 @@ def windrose_api(station):
         "source": source_info
     })
 
-@app.route("/api/windrose-monthly/<station>")
 @admin_only_api
 def windrose_monthly_api(station):
     """API endpoint untuk Wind Rose 1 bulan penuh (bulan sebelumnya) - FETCH FROM SHEETS"""
@@ -2071,7 +1894,6 @@ def get_chart_period_data():
         pressures = []
         winds = []
         gusts = []
-        wind_records = []
         label_format = "%H:%M" if period in ("today", "yesterday") else "%d/%m %H:%M"
         if period == "year":
             label_format = "%d/%m/%y %H:%M"
@@ -2086,16 +1908,6 @@ def get_chart_period_data():
             winds.append(parsed.get("wind_speed_kt"))
             gusts.append(parsed.get("wind_gust_kt"))
 
-            wind_match = re.search(r"\b(\d{3}|VRB)(\d{2,3})(?:G(\d{2,3}))?KT\b", metar)
-            if wind_match:
-                direction = wind_match.group(1)
-                wind_records.append({
-                    "dir": int(direction) if direction != "VRB" else "VRB",
-                    "speed": float(wind_match.group(2)),
-                    "utc_time": observed_at.strftime("%Y-%m-%d %H:%M UTC"),
-                    "wib_time": (observed_at + timedelta(hours=7)).strftime("%Y-%m-%d %H:%M WIB")
-                })
-
         range_start = history["time"].iloc[0].strftime("%Y-%m-%d %H:%M UTC") if not history.empty else start.strftime("%Y-%m-%d %H:%M UTC")
         empty_range_end = min(end, now) - timedelta(seconds=1)
         range_end = history["time"].iloc[-1].strftime("%Y-%m-%d %H:%M UTC") if not history.empty else empty_range_end.strftime("%Y-%m-%d %H:%M UTC")
@@ -2109,10 +1921,6 @@ def get_chart_period_data():
             "pressures": pressures,
             "winds": winds,
             "gusts": gusts,
-            "windrose": {
-                "binned": bin_wind_data(wind_records),
-                "data": wind_records
-            },
             "count": len(history),
             "range": {"start": range_start, "end": range_end},
             "source": "Sheets" if IS_VERCEL else "Local CSV"
@@ -2201,8 +2009,6 @@ def home():
     qam = None
     narrative = None
     latest = None
-    latest_wind_obj = {}
-    safe_recent_winds = []
     temps = []
     pressures = []
     has_history = False
@@ -2234,7 +2040,6 @@ def home():
             except:
                 pass
             
-            store_wind(parsed, station)
         else:
             # No data today - show warning tapi tetap render
             metar = None
@@ -2330,24 +2135,6 @@ def home():
         winds = []
         gusts = []
     
-    # Convert recent winds for Wind Compass
-    safe_recent_winds = []
-    for w in wind_history:
-        if w.get("station") == station:
-            safe_recent_winds.append({
-                "dir": w.get("dir"),
-                "speed": w.get("speed"),
-                "timestamp": w.get("time")
-            })
-
-    # Extract latest wind specifically
-    latest_wind_obj = {}
-    if parsed and parsed.get('wind_dir') is not None and parsed.get('wind_speed_kt') is not None:
-        latest_wind_obj = {
-            "dir": parsed['wind_dir'],
-            "speed": parsed['wind_speed_kt']
-        }
-
     # Create latest dict for the METAR display with status color
     latest = None
     if metar and parsed:
@@ -2394,8 +2181,6 @@ def home():
         history_end=history_end,
         history_count=history_count,
         history_source=history_source,
-        recent_winds=json.dumps(safe_recent_winds),
-        latest_wind=json.dumps(latest_wind_obj)
     ))
     
     for k, v in response_headers.items():
@@ -2411,7 +2196,6 @@ def common_view_context_data():
     parsed = {}
     qam = None
     narrative = None
-    latest_wind_obj = {}
     
     # Fetch latest data from cache
     metar = str(latest_metar_data.get("raw") or "")
@@ -2473,24 +2257,6 @@ def common_view_context_data():
             history_end = pd.to_datetime(history['time'].iloc[-1]).strftime("%Y-%m-%d %H:%M")
             history_count = len(history)
 
-    # Convert recent winds strictly to a list of dicts
-    safe_recent_winds = []
-    for w in wind_history:
-        if w.get("station") == station:
-            safe_recent_winds.append({
-                "dir": w.get("dir"),
-                "speed": w.get("speed"),
-                "timestamp": w.get("time")
-            })
-            
-    # Extract latest wind
-    latest_wind_obj = {}
-    if parsed and parsed.get('wind_dir') is not None and parsed.get('wind_speed_kt') is not None:
-        latest_wind_obj = {
-            "dir": parsed['wind_dir'],
-            "speed": parsed['wind_speed_kt']
-        }
-
     return {
         "station": station,
         "latest": {"station": station, "metar": metar, "status": parsed.get("status", "normal"), "report_type": detect_metar_report_type(metar)} if parsed else None,
@@ -2508,8 +2274,6 @@ def common_view_context_data():
         "history_end": history_end,
         "history_count": history_count,
         "history_source": history_source,
-        "recent_winds": json.dumps(safe_recent_winds),
-        "latest_wind": json.dumps(latest_wind_obj),
         "auto_fetch": auto_fetch,
         "last_metar_update": last_metar_update
     }
@@ -2525,11 +2289,6 @@ def common_view_context(template_name):
 @login_required
 def charts_view():
     return common_view_context("charts.html")
-
-@app.route("/wind_analysis")
-@login_required
-def wind_analysis_view():
-    return common_view_context("wind_analysis.html")
 
 @app.route("/metar", methods=["GET", "POST"])
 @login_required
@@ -2662,10 +2421,8 @@ def history_by_date():
     winds: list = []
     gusts: list = []
     thunder_flags: list = []
-    wind_dirs: list = []
     start_date = ""
     end_date = ""
-    utc_wib_labels: list = []
 
     if request.method == "POST":
         station = request.form.get("icao", "WARR").upper()
@@ -2835,16 +2592,13 @@ def history_by_date():
                             qnh_match = re.search(r'Q(\d{4})', metar)
                             pressures.append(int(qnh_match.group(1)) if qnh_match else None)
                             
-                            # Extract wind speed, gust, and direction
+                            # Extract wind speed and gust
                             wind_match = re.search(r'(\d{3}|VRB)(\d{2,3})(G(\d{2,3}))?KT', metar)
                             
                             if wind_match:
-                                wind_dir = wind_match.group(1)
-                                wind_dirs.append(wind_dir if wind_dir != "VRB" else None)
                                 winds.append(int(wind_match.group(2)))
                                 gusts.append(int(wind_match.group(4)) if wind_match.group(4) else None)
                             else:
-                                wind_dirs.append(None)
                                 winds.append(None)
                                 gusts.append(None)
                             
@@ -2852,9 +2606,6 @@ def history_by_date():
                             thunder_codes = ["TS", "TSRA", "VCTS", "+TS", "TSGR", "-TS", "+TSRA", "-TSRA"]
                             thunder_flags.append(any(code in metar for code in thunder_codes))
                             
-                            # Add full dual time label for Wind Rose
-                            wib_time_row = row["time"] + timedelta(hours=7)
-                            utc_wib_labels.append(f"{row['time'].strftime('%Y-%m-%d %H:%M UTC')} | {wib_time_row.strftime('%Y-%m-%d %H:%M WIB')}")
                         
                         # Pre-calculate validation for table display (allows for status badges/row colors)
                         if results is not None and not results.empty:
@@ -2884,10 +2635,8 @@ def history_by_date():
         winds=winds,
         gusts=gusts,
         thunder_flags=thunder_flags,
-        wind_dirs=wind_dirs,
         start_date=start_date,
         end_date=end_date,
-        utc_wib_labels=utc_wib_labels,
         auto_fetch=auto_fetch,
         last_metar_update=last_metar_update
     )
@@ -3289,7 +3038,6 @@ def update_metar_data_and_sync(station="WARR", is_cron=False):
         
         # 🔥 SERVER-SIDE WIND LOGGING: Perekaman otomatis tanpa dashboard
         print(f"[SYNC][{req_id}] Processing server-side wind log...", file=sys.stderr)
-        process_server_wind_log(metar)
         
         # Format waktu tanpa milliseconds untuk consistency
         new_row_df = pd.DataFrame([new_row])
@@ -3321,8 +3069,6 @@ def update_metar_data_and_sync(station="WARR", is_cron=False):
         qam = generate_qam(station, parsed, metar)
         narrative = generate_metar_narrative(parsed, metar)
         
-        # Simpan ke wind history
-        store_wind(parsed, station)
         
         latest_metar_data = {
             "status": "new",
@@ -3911,9 +3657,6 @@ def get_yesterday_records():
 
 # Untuk local development
 if __name__ == "__main__":
-    # Pre-populate wind history for Wind Rose
-    load_wind_history()
-    
     # Initialize last_metar_update from CSV if available
     if os.path.exists(CSV_FILE):
         try:

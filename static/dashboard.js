@@ -42,10 +42,6 @@ function hashMetar(metar) {
 let soundEnabled = localStorage.getItem('soundEnabled') === 'true';
 // Load theme from localStorage, default 'light'
 let currentTheme = localStorage.getItem('theme') || 'light';
-let currentRunwayHeading = 100;  // Default RWY 10
-let currentWindDir = null;
-let currentWindSpeed = null;
-let currentWindGust = null;
 // Persistent auto-fetch state (persists across page reloads & server restarts)
 let autoFetchEnabled = localStorage.getItem('autoFetchEnabled') === null ? true : localStorage.getItem('autoFetchEnabled') === 'true';
 
@@ -371,20 +367,6 @@ function updateChartColors() {
         });
     }
 
-    // Update Wind widgets if Plotly is used
-    if (typeof loadWindCompass === 'function') {
-        loadWindCompass();
-    }
-    if (typeof loadWindRose === 'function') {
-        loadWindRose();
-    }
-    if (document.getElementById('chartWindRose') && currentChartData) {
-        renderWindRose('chartWindRose', currentChartData.windrose, {
-            title: currentChartData.title,
-            isBinned: true,
-            subLabel: currentChartData.infoText
-        });
-    }
 }
 window.toggleTheme = toggleTheme;
 
@@ -549,23 +531,16 @@ function updateDecodedPanel(raw) {
     // Extract wind
     const windMatch = raw.match(/\b(\d{3}|VRB)(\d{2,3})(G(\d{2,3}))?KT\b/);
     if (windMatch) {
-        currentWindDir = windMatch[1] === 'VRB' ? 'VRB' : parseInt(windMatch[1]);
-        currentWindSpeed = parseInt(windMatch[2]);
-        currentWindGust = windMatch[4] ? parseInt(windMatch[4]) : null;
+        const windDirection = windMatch[1] === 'VRB' ? 'VRB' : parseInt(windMatch[1]);
+        const windSpeed = parseInt(windMatch[2]);
+        const windGust = windMatch[4] ? parseInt(windMatch[4]) : null;
 
-        const windDisplay = currentWindDir === 'VRB' ? 'VRB' : `${currentWindDir}°`;
-        setParam('paramWind', `${windDisplay}/${currentWindSpeed}kt`);
+        const windDisplay = windDirection === 'VRB' ? 'VRB' : `${windDirection}°`;
+        setParam('paramWind', `${windDisplay}/${windSpeed}kt`);
 
-        const gustText = currentWindGust ? ` G${currentWindGust}kt` : '';
+        const gustText = windGust ? ` G${windGust}kt` : '';
         const detailEl = document.getElementById('paramWindDetail');
         if (detailEl) detailEl.textContent = gustText;
-
-        updateCrosswind();
-
-        // Real-time update for Wind Compass if on page
-        if (typeof updateWindCompassDisplay === 'function') {
-            updateWindCompassDisplay(currentWindDir, currentWindSpeed);
-        }
     }
 
     // Extract visibility
@@ -779,277 +754,6 @@ function setParam(id, value) {
 }
 
 // =======================
-// WIND COMPASS (Plotly) - 100% CLEAN DIGITAL INSTRUMENT
-// =======================
-function updateWindCompassDisplay(windDir, windSpeed) {
-    if (typeof windDir === 'object' && windDir !== null) {
-        windSpeed = windDir.wind_speed;
-        windDir = windDir.wind_direction;
-    }
-
-    if (windDir === undefined || (windDir === null && windDir !== 0)) return;
-    if (!document.getElementById('windCompassChart')) return;
-
-    const dir = windDir === 'VRB' ? 0 : parseInt(windDir);
-    const speed = windSpeed || 0;
-    const isDark = (typeof currentTheme !== 'undefined' ? currentTheme : 'light') === 'dark';
-
-    // Bersihkan state Plotly lama
-    Plotly.purge('windCompassChart');
-
-    // Palet Warna
-    const windColor = isDark ? '#F59E0B' : '#DC2626';
-    const runwayColor = isDark ? '#334155' : '#64748b';
-    const textColor = isDark ? '#F1F5F9' : '#1E3A5F';
-    const subTextColor = isDark ? '#94A3B8' : '#64748B'; // Warna untuk teks "Speed - knot"
-    const gridColor = isDark ? 'rgba(255, 255, 255, 0.4)' : 'rgba(0, 0, 0, 0.4)';
-    const cardinalTickColor = isDark ? '#FFFFFF' : '#000000';
-
-    const maxRadius = Math.max(speed + 5, 20);
-    const rwyRadius = maxRadius * 0.85;
-    const arrowLength = maxRadius * 0.80;
-
-    // -----------------------------------------------------------
-    // MEMBUAT GRID PINGGIRAN LINGKARAN (TICKS) SETIAP 5 DERAJAT
-    // -----------------------------------------------------------
-    const tickVals = [];
-    const tickText = [];
-    const compassLabels = {
-        0: 'N', 45: 'NE', 90: 'E', 135: 'SE',
-        180: 'S', 225: 'SW', 270: 'W', 315: 'NW'
-    };
-
-    for (let i = 0; i < 360; i += 5) {
-        tickVals.push(i);
-        // Hanya tampilkan huruf di sudut utama, sisanya kosong (hanya garis)
-        if (compassLabels[i]) {
-            tickText.push(compassLabels[i]);
-        } else {
-            tickText.push('');
-        }
-    }
-
-    const traces = [
-        // 1. Aspal Runway
-        {
-            type: 'scatterpolar', mode: 'lines',
-            r: [rwyRadius, 0, rwyRadius], theta: [100, 0, 280],
-            line: { color: runwayColor, width: 28 },
-            hoverinfo: 'none', showlegend: false
-        },
-        // 2. Garis Putus-putus Centerline
-        {
-            type: 'scatterpolar', mode: 'lines',
-            r: [rwyRadius * 0.95, 0, rwyRadius * 0.95], theta: [100, 0, 280],
-            line: { color: '#ffffff', width: 2, dash: 'dash' },
-            hoverinfo: 'none', showlegend: false
-        },
-        // 3. Angka Runway 10 & 28 (Dipindah ke samping poros agar tidak tertutup panah)
-        {
-            type: 'scatterpolar', mode: 'text',
-            r: [rwyRadius * 0.82, rwyRadius * 0.82],
-            theta: [115, 295], // Geser +15 derajat agar selalu terlihat di samping panah
-            text: ['10', '28'],
-            textfont: {
-                size: 12,
-                color: cardinalTickColor, // Mengikuti warna mata angin (Hitam/Putih)
-                family: 'Inter',
-                weight: 'bold'
-            },
-            hoverinfo: 'none', showlegend: false
-        },
-        // 4. Badan Panah Angin
-        {
-            type: 'scatterpolar', mode: 'lines',
-            r: [0, arrowLength], theta: [dir, dir],
-            line: { color: windColor, width: 6 },
-            hoverinfo: 'none', showlegend: false
-        },
-        // 5. Titik Pusat
-        {
-            type: 'scatterpolar', mode: 'markers',
-            r: [0], theta: [0],
-            marker: { size: 10, color: windColor, symbol: 'circle' },
-            hoverinfo: 'none', showlegend: false
-        },
-        // 6. Ujung Panah (Bulat)
-        {
-            type: 'scatterpolar', mode: 'markers',
-            r: [arrowLength], theta: [dir],
-            marker: { symbol: 'circle', size: 12, color: windColor },
-            name: 'Wind',
-            hovertemplate: `Direction: ${windDir === 'VRB' ? 'VRB' : dir + '°'}<br>Speed: ${speed} kt<extra></extra>`
-        }
-    ];
-
-    const layout = {
-        polar: {
-            bgcolor: 'rgba(0,0,0,0)',
-            angularaxis: {
-                direction: 'clockwise',
-                rotation: 90,
-
-                // Menerapkan grid pengukur kecil-kecil (Ticks)
-                tickmode: 'array',
-                tickvals: tickVals,
-                ticktext: tickText,
-                tickfont: { size: 14, color: cardinalTickColor, family: 'Inter', weight: 'bold' },
-
-                showgrid: false,          // 1. MENGHILANGKAN JARING LABA-LABA DI DALAM
-                showline: true,           // 2. MENGAKTIFKAN LINGKARAN LUAR
-                linecolor: gridColor,
-                linewidth: 2,
-
-                ticks: 'inside',          // 3. MEMBUAT GARIS KECIL MENGHADAP KE DALAM
-                ticklen: 8,               // Panjang garis pengukur
-                tickwidth: 1.5,
-                tickcolor: gridColor
-            },
-            radialaxis: {
-                visible: false,           // 4. MENGHILANGKAN CINCIN KECEPATAN DI DALAM
-                range: [0, maxRadius]
-            }
-        },
-        showlegend: false,
-        margin: { t: 40, b: 40, l: 40, r: 40 },
-        paper_bgcolor: 'rgba(0,0,0,0)',
-        plot_bgcolor: 'rgba(0,0,0,0)',
-
-        // -----------------------------------------------------------
-        // TEKS INFORMASI (SUDAH DIPISAH AGAR TIDAK NUMPUK)
-        // -----------------------------------------------------------
-        annotations: [
-            // 1. Teks "Speed - knot" (Dinaikkan secara independen)
-            {
-                text: `Speed - knot`,
-                showarrow: false,
-                font: { color: subTextColor, family: 'Inter', size: 13 },
-                x: 0.5,
-                y: 0.82,  // <--- Dinaikkan/Diturunkan
-                xref: 'paper', yref: 'paper',
-                xanchor: 'center', yanchor: 'middle'
-            },
-            // 2. Angka Speed (Tetap di posisinya)
-            {
-                text: `<b>${speed}</b>`,
-                showarrow: false,
-                font: { color: textColor, family: 'Inter', size: 24 },
-                x: 0.5,
-                y: 0.74,  // <--- Posisi angka kecepatan
-                xref: 'paper', yref: 'paper',
-                xanchor: 'center', yanchor: 'middle'
-            },
-            // 3. Angka Derajat (Tetap di posisinya)
-            {
-                text: `<b style="font-size:24px">${windDir === 'VRB' ? 'VRB' : dir + '°'}</b>`,
-                showarrow: false,
-                font: { color: textColor, family: 'Inter' },
-                x: 0.5,
-                y: 0.26,  // <--- Posisi angka arah angin
-                xref: 'paper', yref: 'paper',
-                xanchor: 'center', yanchor: 'middle'
-            },
-            // 4. Teks "Direction" (Diturunkan secara independen)
-            {
-                text: `Direction`,
-                showarrow: false,
-                font: { color: subTextColor, family: 'Inter', size: 13 },
-                x: 0.5,
-                y: 0.18,  // <--- Dinaikkan/Diturunkan
-                xref: 'paper', yref: 'paper',
-                xanchor: 'center', yanchor: 'middle'
-            }
-        ]
-    };
-
-    Plotly.newPlot('windCompassChart', traces, layout, { responsive: true, displayModeBar: false });
-}
-
-function selectRunway(btn, heading) {
-    document.querySelectorAll('.runway-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    currentRunwayHeading = heading;
-    updateCrosswind();
-}
-
-function updateCrosswind(dir, speed) {
-    if (!document.getElementById('xwHead')) return;
-
-    // Gunakan parameter atau ambil dari global state
-    const windDir = dir !== undefined ? dir : currentWindDir;
-    const windSpeed = speed !== undefined ? speed : currentWindSpeed;
-
-    // Update global state supaya sinkron
-    if (dir !== undefined) currentWindDir = dir;
-    if (speed !== undefined) currentWindSpeed = speed;
-
-    if (windDir === null || windDir === 'VRB' || windSpeed === null) {
-        return;
-    }
-
-    const dirNum = typeof windDir === 'string' ? parseInt(windDir) : windDir;
-    const rwyHdg = currentRunwayHeading;
-
-    // Kalkulasi arah relatif (Relative Angle)
-    const angleDeg = dirNum - rwyHdg;
-    const angleRad = angleDeg * (Math.PI / 180);
-
-    // Crosswind Calculator Logic
-    const rawHeadwind = windSpeed * Math.cos(angleRad);
-    const rawCrosswind = windSpeed * Math.sin(angleRad);
-
-    const headwind = Math.round(rawHeadwind * 10) / 10;
-    const crosswind = Math.round(Math.abs(rawCrosswind) * 10) / 10;
-
-    const headVal = headwind > 0 ? headwind : 0;
-    const tailwind = headwind < 0 ? Math.abs(headwind) : 0;
-
-    // Update Text Values
-    document.getElementById('xwHead').textContent = `${headVal.toFixed(1)} kt`;
-    document.getElementById('xwCross').textContent = `${crosswind.toFixed(1)} kt`;
-    document.getElementById('xwTail').textContent = `${tailwind.toFixed(1)} kt`;
-
-    // Update Status Colors
-    // Headwind: Favorable (Limit: 999 kt dummy)
-    updateXwindStatus('xwHead', 'xwHeadStatus', headVal, 999, 'Favorable', 'Favorable', 'Favorable');
-    // Crosswind: Safe < 10, Monitor 10-15, Warning 15-20, Critical > 20
-    let crossSafe = 'Safe'; let crossMon = 'Monitor'; let crossCrit = 'EXCEEDED';
-    updateXwindStatus('xwCross', 'xwCrossStatus', crosswind, 20, crossSafe, crossMon, crossCrit);
-
-    // Tailwind: Safe < 5, Monitor 5-10, Critical > 10
-    updateXwindStatus('xwTail', 'xwTailStatus', tailwind, 10, 'Safe', 'Monitor', 'EXCEEDED');
-}
-
-function updateXwindStatus(parentId, statusId, value, limit, safeText, monitorText, criticalText) {
-    const parent = document.getElementById(parentId).parentElement;
-    const status = document.getElementById(statusId);
-    if (!parent || !status) return;
-
-    let cssClass = 'xw-safe';
-    let text = safeText;
-
-    if (value >= limit) {
-        cssClass = 'xw-critical';
-        text = criticalText;
-    } else if (value >= limit * 0.5) { // e.g. Crosswind >= 10 (if limit is 20)
-        cssClass = 'xw-monitor';
-        text = monitorText;
-    }
-
-    // specific tailwind rules
-    if (parentId === 'xwTail') {
-        if (value > 10) {
-            cssClass = 'xw-critical'; text = 'EXCEEDED';
-        } else if (value >= 5) {
-            cssClass = 'xw-monitor'; text = 'Caution';
-        }
-    }
-
-    parent.className = 'xwind-item ' + cssClass;
-    status.textContent = text;
-}
-
-// =======================
 // THUNDERSTORM MODULE
 // =======================
 function updateThunderstormModule(raw) {
@@ -1101,94 +805,6 @@ function updateThunderstormModule(raw) {
         tsLastUpdate.textContent = `Last Update: ${utcStr}`;
     }
 }
-
-// =======================
-// WIND CALCULATION LOGGER (Forensics)
-// =======================
-class WindCalculationLogger {
-    constructor() {
-        this.lastLoggedMetarHash = null;
-    }
-
-    logForCurrentMetar(data) {
-        if (!data || !data.raw) return;
-
-        // Cek duplikat
-        const currentHash = hashMetar(data.raw);
-        if (this.lastLoggedMetarHash === currentHash) return;
-
-        // Extract wind from METAR
-        const windMatch = data.raw.match(/\b(\d{3}|VRB)(\d{2,3})(G\d{2,3})?KT\b/);
-        if (!windMatch) return; // No wind data
-
-        const windDirRaw = windMatch[1];
-        if (windDirRaw === 'VRB') return; // Cannot calc crosswind for VRB exactly without more context
-
-        const windDir = parseInt(windDirRaw);
-        const windSpeed = parseInt(windMatch[2]);
-        const windGust = windMatch[3] ? parseInt(windMatch[3].substring(1)) : null;
-
-        // Run calculation for both runways
-        this.calculateAndSendLog(data.raw, windDir, windSpeed, windGust, '10', 100, data);
-        this.calculateAndSendLog(data.raw, windDir, windSpeed, windGust, '28', 280, data);
-
-        this.lastLoggedMetarHash = currentHash;
-    }
-
-    calculateAndSendLog(metarRaw, windDir, windSpeed, windGust, runwayName, runwayHdg, data) {
-        // Kalkulasi
-        const angleDeg = windDir - runwayHdg;
-        const angleRad = angleDeg * (Math.PI / 180);
-
-        const rawHeadwind = windSpeed * Math.cos(angleRad);
-        const rawCrosswind = windSpeed * Math.sin(angleRad);
-
-        const headwind = Math.round(rawHeadwind * 10) / 10;
-        const crosswind = Math.round(Math.abs(rawCrosswind) * 10) / 10;
-        const headVal = headwind > 0 ? headwind : 0;
-        const tailwind = headwind < 0 ? Math.abs(headwind) : 0;
-
-        // Status
-        let crossStatus = crosswind >= 20 ? 'DANGER' : (crosswind >= 10 ? 'CAUTION' : 'SAFE');
-        let tailStatus = tailwind >= 10 ? 'DANGER' : (tailwind >= 5 ? 'CAUTION' : 'SAFE');
-
-        const payload = {
-            runway: runwayName,
-            runway_heading: runwayHdg,
-            wind_dir: windDir,
-            wind_speed: windSpeed,
-            wind_gust: windGust,
-            headwind: headVal,
-            crosswind: crosswind,
-            tailwind: tailwind,
-            crosswind_status: crossStatus,
-            tailwind_status: tailStatus,
-            metar_raw: metarRaw
-        };
-
-        fetch('/api/log-crosswind', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        })
-            .then(async res => {
-                const dr = await res.json();
-                if (!res.ok) throw new Error(dr.error || 'Server error');
-                return dr;
-            })
-            .then(res => {
-                console.log(`[WIND LOG] Saved successfully: RWY ${runwayName}`, res);
-                showToast('Wind Log', `Berhasil simpan Log RWY ${runwayName}`, 'success', 5000, false);
-            })
-            .catch(err => {
-                console.error('[WIND LOG] Error saving log:', err);
-                showToast('Wind Log Error', `Gagal simpan: ${err.message}`, 'error');
-            });
-    }
-}
-
-// Global logger instance
-window.windLogger = new WindCalculationLogger();
 
 // =======================
 // DATA HANDLER (Formerly Socket Handler) - FIXED ANTI-SPAM ALARM
@@ -1257,10 +873,6 @@ function handleMetarUpdate(data) {
         alarmState.lastProcessedServerTime = data.last_update;
     }
     saveAlarmState(); // 🔥 COMMIT TO LOCALSTORAGE
-
-    // 🔥 AUTO-LOGGING DISABLED ON CLIENT: 
-    // Now handled exclusively by server-side sync to prevent double entries.
-    // window.windLogger.logForCurrentMetar(data);
 
     // Cek apakah kondisi berbahaya BARU muncul (transisi dari aman ke berbahaya)
     const isNewLowVis = isLowVis && !alarmState.lowVisTriggered;
@@ -1415,8 +1027,6 @@ function handleMetarUpdate(data) {
     // Refresh ALL UI Components in sync
     if (typeof loadHistory === 'function') loadHistory(); // Updates Charts
     if (typeof updateHistoryTable === 'function') updateHistoryTable(); // Updates Table
-    if (typeof loadWindCompass === 'function') loadWindCompass();
-    if (typeof loadWindRose === 'function') loadWindRose();
 
     // updateMiniTimeline(); // 🔥 DISABLED
 
@@ -1980,11 +1590,10 @@ window.updateCharts = updateCharts;
 
 let currentChartPeriod = 'today';
 let currentChartYear = new Date().getUTCFullYear();
-let currentChartData = null;
 
 async function loadChartPeriod(period = 'today', year = currentChartYear) {
     const yearSelect = document.getElementById('chart-year');
-    if (!document.getElementById('chartWindRose')) return;
+    if (!yearSelect) return;
 
     currentChartPeriod = period;
     if (period === 'year') {
@@ -2003,9 +1612,7 @@ async function loadChartPeriod(period = 'today', year = currentChartYear) {
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'Failed to load chart data');
 
-        currentChartData = data;
         const infoText = `${data.range.start} to ${data.range.end} • ${data.count} records (from ${data.source})`;
-        data.infoText = infoText;
 
         const displayDate = document.getElementById('display-date');
         if (displayDate) displayDate.textContent = data.title;
@@ -2016,17 +1623,12 @@ async function loadChartPeriod(period = 'today', year = currentChartYear) {
             if (element) element.textContent = infoText;
         });
 
-        const windRoseInfo = document.getElementById('chartWindRose-info');
-        if (windRoseInfo) windRoseInfo.textContent = infoText;
-        renderWindRose('chartWindRose', data.windrose, {
-            title: data.title,
-            isBinned: true,
-            subLabel: infoText
-        });
     } catch (error) {
         console.error('[CHART] Period data error:', error);
-        const info = document.getElementById('chartWindRose-info');
-        if (info) info.textContent = 'Gagal memuat data untuk periode ini.';
+        ['tempChart-info', 'pressureChart-info', 'windChart-info'].forEach(id => {
+            const element = document.getElementById(id);
+            if (element) element.textContent = 'Gagal memuat data untuk periode ini.';
+        });
     }
 }
 window.loadChartPeriod = loadChartPeriod;
@@ -2478,294 +2080,6 @@ async function updateMiniTimeline() {
     }
 }
 
-// =======================
-// WIND COMPASS (Plotly)
-// =======================
-function loadWindCompass() {
-    fetch(`/api/metar/${STATION}`)
-        .then(r => r.json())
-        .then(data => {
-            if (data.error || !data.wind_direction) return;
-
-            let windDir = data.wind_direction === 'VRB' ? 0 : parseInt(data.wind_direction);
-            let windSpeed = data.wind_speed || 0;
-
-            // Update global variables for crosswind calculator
-            currentWindDir = windDir;
-            currentWindSpeed = windSpeed;
-
-            // Update crosswind calculator
-            updateCrosswind();
-
-            // Update compass display
-            updateWindCompassDisplay(windDir, windSpeed);
-        })
-        .catch(e => console.error('Wind compass error:', e));
-}
-
-// WIND ROSE (Plotly)
-// =======================
-async function loadWindRose(station = STATION) {
-    if (typeof Plotly === 'undefined') return;
-    if (!station) return;
-
-    // Check if we need to render either of the wind roses on this page
-    const has24h = document.getElementById('windRose24h');
-    const hasMonth = document.getElementById('windRoseMonth');
-    if (!has24h && !hasMonth) return;
-
-    try {
-        // 1. Fetch & Render 24h Wind Rose
-        if (has24h) {
-            const res24h = await fetch(`/api/windrose/${station}`);
-            const data24h = await res24h.json();
-
-            // 🔥 Passing the whole data object for binned visualization
-            const yesterdayTitle = data24h.date_info || 'Yesterday (UTC)';
-            renderWindRose('windRose24h', data24h, {
-                title: yesterdayTitle,
-                isBinned: true
-            });
-
-            const badge24h = document.getElementById('windrose24h-badge');
-            const info24h = document.getElementById('windrose24h-info');
-            if (badge24h && data24h.count !== undefined) {
-                badge24h.textContent = `${data24h.count} records`;
-            }
-            if (info24h && data24h.range) {
-                const subLabel = `${data24h.range.start} to ${data24h.range.end} • ${data24h.count} records (from ${data24h.source || 'Sheets'})`;
-                info24h.textContent = subLabel;
-                // 🔥 Re-render with subLabel for export inclusion
-                renderWindRose('windRose24h', data24h, {
-                    title: yesterdayTitle,
-                    isBinned: true,
-                    subLabel: subLabel
-                });
-            }
-        }
-
-        // 2. Fetch & Render Monthly Wind Rose
-        if (hasMonth) {
-            const resMonth = await fetch(`/api/windrose-monthly/${station}`);
-            const dataMonth = await resMonth.json();
-
-            const subLabel = `${dataMonth.range.start} to ${dataMonth.range.end} • ${dataMonth.count} records (from Sheets)`;
-            renderWindRose('windRoseMonth', dataMonth, {
-                title: `${dataMonth.month_name} ${dataMonth.year}`,
-                isBinned: true,
-                subLabel: subLabel
-            });
-
-            const badgeMonth = document.getElementById('windroseMonth-badge');
-            const infoMonth = document.getElementById('windroseMonth-info');
-            if (badgeMonth) badgeMonth.textContent = `${dataMonth.month_name} ${dataMonth.year}`;
-            if (infoMonth) {
-                infoMonth.textContent = `${dataMonth.range.start} to ${dataMonth.range.end} • ${dataMonth.count} records (from Sheets)`;
-            }
-        }
-
-    } catch (e) {
-        console.error('Dual Wind Rose error:', e);
-    }
-}
-
-function renderWindRose(containerId, dataObj, options) {
-    const container = document.getElementById(containerId);
-    if (!container) return;
-
-    if (!dataObj || (dataObj.data && dataObj.data.length === 0 && !dataObj.binned) ||
-        (dataObj.binned && dataObj.binned.total_count === 0)) {
-        container.innerHTML =
-            '<div style="display:flex;justify-content:center;align-items:center;height:100%;color:var(--text-secondary);font-family:Inter;font-size:0.9rem;">No wind data available for this period</div>';
-        return;
-    }
-
-    const isDark = currentTheme === 'dark';
-
-    // Bin wind observations by direction and speed for the wind-rose chart.
-    if (dataObj.binned) {
-        const binned = dataObj.binned;
-        const labels = binned.bin_labels;
-        const colors = [
-            '#1E3A5F', '#2563EB', '#60A5FA', '#94A3B8',
-            '#FDBA74', '#F97316', '#DC2626'
-        ];
-
-        const sectors = binned.sectors; // 8 sectors
-        const theta = sectors.map(s => s.angle); // Use numerical angles (0, 45, ...)
-
-        // 🔥 1. MENGHITUNG PERSENTASE MAKSIMAL UNTUK JARAK LINGKARAN DINAMIS
-        let maxPercent = 0;
-        sectors.forEach(sector => {
-            let sectorTotal = 0;
-            sector.bins.forEach(bin => {
-                // Pastikan nilai persentase valid (angka atau string angka)
-                const p = parseFloat(bin.percentage);
-                if (!isNaN(p)) {
-                    sectorTotal += p;
-                }
-            });
-            if (sectorTotal > maxPercent) maxPercent = sectorTotal;
-        });
-
-        // 🔥 2. MENENTUKAN JARAK GARIS (dtick) BERDASARKAN NILAI MAKSIMAL
-        let dynamicDtick = 10;
-        if (maxPercent > 60) {
-            dynamicDtick = 20; // Jika tembus 60%+, buat garis tiap 20% (20, 40, 60, 80)
-        } else if (maxPercent >= 30) {
-            dynamicDtick = 10; // Jika 30%-60%, buat garis tiap 10%
-        } else if (maxPercent >= 15) {
-            dynamicDtick = 5;  // Jika 15%-30%, buat garis tiap 5%
-        } else {
-            dynamicDtick = 2;  // Jika sangat kecil, buat garis tiap 2%
-        }
-
-        // 🔥 TAMBAHKAN INI: Menghitung batas luar lingkaran agar selalu pas dengan garis grid terluar
-        let maxRange = Math.ceil(maxPercent / dynamicDtick) * dynamicDtick;
-        if (maxRange === 0) maxRange = dynamicDtick; // Jaga-jaga jika data 0
-
-        // Create 7 traces (one for each speed bin) for STACKED BAR POLAR
-        const traces = labels.map((label, i) => {
-            return {
-                type: 'barpolar',
-                name: label + ' kt',
-                r: sectors.map(s => s.bins[i].percentage),
-                theta: theta,
-                customdata: sectors.map(s => ({
-                    count: s.bins[i].count,
-                    times: s.bins[i].times || ''
-                })),
-                marker: {
-                    color: colors[i],
-                    line: { color: isDark ? 'rgba(0,0,0,0.3)' : 'rgba(255,255,255,0.4)', width: 1.5 }
-                },
-                hovertemplate:
-                    '<b>Arah: %{theta}°</b><br>' +
-                    `Kecepatan: ${label} KT<br>` +
-                    'Frekuensi: %{r}%<br>' +
-                    'Jumlah: %{customdata.count} record<br>' +
-                    '<b>Waktu (UTC):</b><br>' +
-                    '%{customdata.times}' +
-                    '<extra></extra>'
-            };
-        });
-
-        const layout = {
-            polar: {
-                barmode: 'stack',
-                bgcolor: 'rgba(0,0,0,0)',
-                angularaxis: {
-                    direction: 'clockwise',
-                    rotation: 90,
-                    showgrid: true,
-                    showline: true,
-                    linecolor: isDark ? 'rgba(255, 255, 255, 0.5)' : 'rgba(0, 0, 0, 0.3)',
-                    linewidth: 1,
-                    gridcolor: isDark ? 'rgba(255, 255, 255, 0.5)' : 'rgba(0, 0, 0, 0.3)',
-                    gridwidth: 1,
-                    tickmode: 'array',
-                    tickvals: [0, 45, 90, 135, 180, 225, 270, 315],
-                    ticktext: ['N', 'N-E', 'E', 'S-E', 'S', 'S-W', 'W', 'N-W'],
-                    tickfont: { size: 14, color: isDark ? '#F1F5F9' : '#1E3A5F', family: 'Inter', weight: 'bold' }
-                },
-                radialaxis: {
-                    showgrid: true,
-                    showline: true,
-                    linecolor: isDark ? 'rgba(255, 255, 255, 0.5)' : 'rgba(0, 0, 0, 0.3)',
-                    linewidth: 1,
-                    gridcolor: isDark ? 'rgba(255, 255, 255, 0.5)' : 'rgba(0, 0, 0, 0.3)',
-                    gridwidth: 1,
-                    // 🔥 3. GUNAKAN dtick DINAMIS DI SINI
-                    tickmode: 'linear',
-                    dtick: dynamicDtick,
-                    // 🔥 TAMBAHKAN BARIS INI: Memaksa batas lingkaran penuh sampai maxRange
-                    range: [0, maxRange],
-                    tick0: 0,
-                    ticksuffix: '%',
-                    angle: 45,
-                    tickangle: 45,
-                    tickfont: { size: 11, color: isDark ? '#94A3B8' : '#64748B', weight: 'bold' }
-                }
-            },
-            showlegend: true,
-            legend: {
-                title: { text: 'Kecepatan', font: { size: 14, family: 'Inter', weight: 'bold' } },
-                font: { size: 12, family: 'Inter', color: isDark ? '#E2E8F0' : '#1E293B' },
-                x: 1.05,
-                y: 0.5,
-                itemsizing: 'constant'
-            },
-            // 🔥 1. MARGIN BAWAH DIPERKECIL (Rapat)
-            // Ubah nilai 'b' (bottom) menjadi 80 (sebelumnya 100 atau lebih) agar ruang kosong di bawah hilang
-            margin: { t: 50, b: 80, l: 30, r: 100 },
-            paper_bgcolor: 'rgba(0,0,0,0)',
-            plot_bgcolor: 'rgba(0,0,0,0)',
-            title: {
-                text: options.title || '',
-                font: { family: 'Inter', size: 18, color: isDark ? '#F1F5F9' : '#1E3A5F', weight: 'bold' },
-                y: 0.98
-            },
-            annotations: [
-                {
-                    text: `<b style="color:#DC2626">Angin Tenang (Calm): ${binned.calm_percent}%</b>`,
-                    showarrow: false,
-                    xref: 'paper',
-                    yref: 'paper',
-                    x: 0,
-                    // 🔥 2. TEKS DITURUNKAN
-                    y: -0.25, // Nilai minus diperbesar agar semakin turun menjauhi lingkaran
-                    xanchor: 'left',
-                    font: { size: 15, family: 'Inter', color: '#DC2626' }
-                },
-                {
-                    text: options.subLabel || '',
-                    showarrow: false,
-                    xref: 'paper',
-                    yref: 'paper',
-                    x: 0,
-                    // 🔥 3. TEKS SUB-LABEL DITURUNKAN (mengikuti teks di atasnya)
-                    y: -0.35,
-                    xanchor: 'left',
-                    font: { size: 12, family: 'Inter', color: isDark ? '#94A3B8' : '#64748B' }
-                }
-            ]
-        };
-
-        Plotly.newPlot(containerId, traces, layout, { responsive: true });
-        return;
-    }
-
-    // Fallback for raw data if binned is missing
-    const data = dataObj.data || [];
-    const gridColor = isDark ? 'rgba(255, 255, 255, 0.4)' : '#1E3A5F';
-
-    Plotly.newPlot(containerId, [{
-        type: 'barpolar',
-        r: data.map(d => d.speed),
-        theta: data.map(d => d.dir),
-        customdata: data.map(d => d.utc_time || ''),
-        marker: {
-            color: data.map(d => d.speed),
-            colorscale: options.colorScale || 'Viridis',
-            showscale: true
-        }
-    }], {
-        polar: {
-            bgcolor: 'rgba(0,0,0,0)',
-            angularaxis: { direction: 'clockwise', rotation: 90 },
-            radialaxis: { showgrid: true }
-        },
-        paper_bgcolor: 'rgba(0,0,0,0)',
-        plot_bgcolor: 'rgba(0,0,0,0)',
-        title: { text: options.title || '' }
-    }, { responsive: true });
-}
-
-if (!window.isManualSession) {
-    setInterval(loadWindCompass, 5000);
-    setInterval(loadWindRose, 10000);
-}
-
 /**
  * Global Chart Download Handler
  * Supports both Chart.js and Plotly.js charts
@@ -2773,26 +2087,7 @@ if (!window.isManualSession) {
 function downloadChart(chartId) {
     console.log(`[DOWNLOAD] Initiating export for: ${chartId}`);
 
-    // 1. Handle Plotly.js Charts (Compass & Roses)
-    const plotlyCharts = ['windCompassChart', 'windRose24h', 'windRoseMonth', 'chartWindRose'];
-    if (plotlyCharts.includes(chartId)) {
-        const isDark = currentTheme === 'dark'; // 🔥 Added local definition
-        if (typeof Plotly !== 'undefined') {
-            const filename = chartId.replace(/([A-Z])/g, '_$1').replace(/^./, str => str.toUpperCase());
-            Plotly.downloadImage(chartId, {
-                format: 'png',
-                width: 1200,
-                height: 900,
-                scale: 3, // 🔥 Memperbesar resolusi/DPI gambar 3x lipat agar tidak pecah di Word
-                filename: `${filename}_${STATION}`,
-                // 🔥 Memastikan background putih dan grid terlihat saat ekspor
-                setBackground: isDark ? '#0f172a' : '#ffffff'
-            });
-        }
-        return;
-    }
-
-    // 2. Handle Chart.js Plots (Trends)
+    // Handle Chart.js plots (trends).
     let chartInstance = null;
     let fallbackFilename = 'Chart';
 
@@ -2872,8 +2167,6 @@ document.addEventListener('DOMContentLoaded', function () {
         loadHistory();
     }
     // updateMiniTimeline(); // 🔥 DISABLED (As requested)
-    loadWindCompass();
-    loadWindRose();
 
     // 6. Instant UI Population from SSR content (Eliminates loading delay)
     const initialRaw = document.getElementById('metarRawCode');
@@ -3202,9 +2495,6 @@ function updateDOM(raw, station) {
     if (typeof loadHistory === 'function') {
         loadHistory();
     }
-    if (typeof loadWindRose === 'function') {
-        loadWindRose(station);
-    }
 }
 
 // Global expose
@@ -3214,7 +2504,6 @@ window.checkRainStatus = checkRainStatus;
 window.makeItRain = makeItRain;
 window.stopRain = stopRain;
 window.updateDOM = updateDOM;
-window.updateWindCompass = updateWindCompassDisplay;
 
 // ============================================
 // STALE DATA DETECTOR - 15 MINUTE THRESHOLD
@@ -3676,157 +2965,6 @@ function closeCitationModal() {
 }
 
 // Close modal when clicking outside content (handled by onclick on overlay div)
-
-// =======================
-// WIND INVESTIGATION LOG UI
-// =======================
-
-function toggleWindLogPanel() {
-    const modal = document.getElementById('windLogPanel');
-    const overlay = document.getElementById('windLogOverlay');
-
-    if (modal && overlay) {
-        if (modal.classList.contains('active')) {
-            modal.classList.remove('active');
-            overlay.classList.remove('active');
-            document.body.style.overflow = 'auto'; // Restore scroll
-        } else {
-            modal.classList.add('active');
-            overlay.classList.add('active');
-            document.body.style.overflow = 'hidden'; // Prevent scroll
-            refreshWindLogTable(); // load data on open
-        }
-    }
-}
-
-function closeWindLogPanel() {
-    const modal = document.getElementById('windLogPanel');
-    const overlay = document.getElementById('windLogOverlay');
-    if (modal) modal.classList.remove('active');
-    if (overlay) overlay.classList.remove('active');
-    document.body.style.overflow = 'auto'; // Restore scroll
-}
-
-function refreshWindLogTable() {
-    const runwaySelect = document.getElementById('windLogRunwayFilter');
-    const startDate = document.getElementById('windLogStart');
-    const endDate = document.getElementById('windLogEnd');
-    const tbody = document.getElementById('windLogTableBody');
-    const statsTotal = document.getElementById('windLogTotal');
-    const statsDanger = document.getElementById('windLogDanger');
-
-    if (!tbody) return;
-
-    // Set loading
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 20px;">Memuat data...</td></tr>';
-
-    let url = '/api/wind-logs?';
-    if (runwaySelect && runwaySelect.value) url += `runway=${runwaySelect.value}&`;
-    if (startDate && startDate.value) url += `start=${startDate.value}T00:00:00&`;
-    if (endDate && endDate.value) url += `end=${endDate.value}T23:59:59&`;
-
-    fetch(url)
-        .then(res => res.json())
-        .then(data => {
-            tbody.innerHTML = '';
-
-            if (!data.logs || data.logs.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 20px;">Tidak ada data log angin.</td></tr>';
-                if (statsTotal) statsTotal.textContent = '0';
-                if (statsDanger) statsDanger.textContent = '0';
-                return;
-            }
-
-            let dangerCount = 0;
-            let lastMetarRawLocal = null;
-
-            data.logs.forEach(log => {
-                const isDanger = log.crosswind_status === 'DANGER' || log.tailwind_status === 'DANGER';
-                if (isDanger) dangerCount++;
-
-                let isBoundary = false;
-                if (lastMetarRawLocal && lastMetarRawLocal !== log.metar_raw) {
-                    isBoundary = true;
-                }
-                lastMetarRawLocal = log.metar_raw;
-
-                const timeStr = log.timestamp ? log.timestamp.replace('T', ' ').substring(0, 16) : '-';
-                const windDisplay = `${log.wind_dir}°/${log.wind_speed}kt${log.wind_gust ? ' G' + log.wind_gust : ''}`;
-
-                let rowClass = isDanger ? 'xw-danger-row' : '';
-                if (isBoundary) rowClass += (rowClass ? ' ' : '') + 'metar-boundary';
-
-                const getStatusBadge = (status) => {
-                    if (status === 'DANGER') return '<span class="badge" style="background:#ef4444;color:white">DANGER</span>';
-                    if (status === 'CAUTION') return '<span class="badge" style="background:#f59e0b;color:black">CAUTION</span>';
-                    return '<span class="badge" style="background:#22c55e;color:white">SAFE</span>';
-                };
-
-                let combinedStatus = getStatusBadge(log.crosswind_status);
-                if (log.tailwind_status === 'DANGER') combinedStatus = getStatusBadge('DANGER');
-                else if (log.tailwind_status === 'CAUTION' && log.crosswind_status === 'SAFE') combinedStatus = getStatusBadge('CAUTION');
-
-                const tr = document.createElement('tr');
-                if (rowClass) tr.className = rowClass;
-
-                const fmtKnots = (val) => {
-                    if (val === null || val === undefined || isNaN(val)) return '-';
-                    return Number(val).toFixed(1).replace('.', ',') + ' kt';
-                };
-
-                tr.innerHTML = `
-                    <td style="white-space:nowrap;">${timeStr}</td>
-                    <td style="font-family:'JetBrains Mono',monospace; font-size:0.8rem;">${log.metar_raw || '-'}</td>
-                    <td>${log.station || '-'}</td>
-                    <td><strong>RWY ${log.runway}</strong></td>
-                    <td>${log.runway_heading || '-'}°</td>
-                    <td>${log.wind_dir || '-'}°</td>
-                    <td>${fmtKnots(log.wind_speed)}</td>
-                    <td>${log.wind_gust ? fmtKnots(log.wind_gust) : '-'}</td>
-                    <td>${fmtKnots(log.headwind)}</td>
-                    <td>${fmtKnots(log.crosswind)}</td>
-                    <td>${fmtKnots(log.tailwind)}</td>
-                    <td>${getStatusBadge(log.crosswind_status)}</td>
-                    <td>${getStatusBadge(log.tailwind_status)}</td>
-                `;
-
-                tbody.appendChild(tr);
-            });
-
-            if (statsTotal) statsTotal.textContent = data.count || 0;
-            if (statsDanger) statsDanger.textContent = dangerCount;
-        })
-        .catch(err => {
-            console.error('Error fetching wind logs:', err);
-            tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 20px; color: red;">Gagal memuat data: ${err}</td></tr>`;
-        });
-}
-
-function exportWindLogs() {
-    window.location.href = '/api/wind-logs/export';
-}
-
-function logCurrentWind() {
-    if (!lastMetarRaw || !window.windLogger) {
-        showToast('Info', 'Belum ada data METAR yang tersedia', 'warning');
-        return;
-    }
-
-    // Paksa simpan log dengan object simulasi yang berisi raw metar
-    const mockupData = {
-        raw: lastMetarRaw,
-        visibility_m: window.lastVisibility || null
-    };
-
-    // Hapus hash lama agar trigger
-    window.windLogger.lastLoggedMetarHash = null;
-    window.windLogger.logForCurrentMetar(mockupData);
-
-    showToast('Wind Log', 'Mencatat perhitungan crosswind saat ini...', 'success');
-
-    // Refresh table after short delay
-    setTimeout(refreshWindLogTable, 1000);
-}
 
 // ============================================
 // INITIALIZATION ON PAGE LOAD
