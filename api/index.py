@@ -3571,8 +3571,12 @@ def get_today_records():
         df = pd.DataFrame(all_records)
         df["time"] = pd.to_datetime(df["time"], errors='coerce')
         
-        # Filter: Hanya data dari 00:00 UTC hari ini
-        today_df = df[df["time"] >= today_start].copy()
+        # Include only WARR records from today's UTC start through the current time.
+        today_df = df[
+            (df["station"].astype(str).str.strip().str.upper() == "WARR") &
+            (df["time"] >= today_start) &
+            (df["time"] <= now_utc)
+        ].copy()
         today_df["is_missing"] = False
         
         # Cari slot data yang hilang/missing
