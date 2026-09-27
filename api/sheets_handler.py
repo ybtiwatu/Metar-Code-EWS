@@ -22,15 +22,12 @@ class SupabaseRestProxy:
         if not self.url or not self.key: return False
         time_str = time.strftime("%Y-%m-%d %H:%M:%S") if isinstance(time, datetime) else str(time)
         try:
-            # 1. Cek dulu apakah data dengan station dan time yang sama sudah ada
+            # Cek duplikat
             check_endpoint = f"{self.url}/rest/v1/metar_data?select=id&station=eq.{station}&time=eq.{time_str}&limit=1"
             check_res = requests.get(check_endpoint, headers=self._get_headers(), timeout=5)
-            
             if check_res.status_code == 200 and len(check_res.json()) > 0:
-                # Data sudah ada, batalkan penyimpanan (mencegah duplikat)
                 return True 
 
-            # 2. Jika belum ada, simpan data baru
             endpoint = f"{self.url}/rest/v1/metar_data"
             payload = {"station": station, "time": time_str, "metar": metar}
             res = requests.post(endpoint, json=payload, headers=self._get_headers(), timeout=5)
@@ -45,8 +42,7 @@ class SupabaseRestProxy:
             endpoint = f"{self.url}/rest/v1/metar_data?select=*&order=time.desc&limit={limit}"
             res = requests.get(endpoint, headers=self._get_headers(), timeout=5)
             if res.status_code == 200:
-                data = res.json()
-                return data[::-1]  # Balik urutan agar kronologis
+                return res.json()[::-1]
             return []
         except Exception as e:
             print(f"[SUPABASE] Error get_recent_data: {e}", file=sys.stderr)
@@ -55,13 +51,11 @@ class SupabaseRestProxy:
     def get_all_data(self, bypass_cache=False):
         if not self.url or not self.key: return []
         try:
-            # Ambil hingga 20.000 data agar mencakup rentang waktu yang lebih luas
-            endpoint = f"{self.url}/rest/v1/metar_data?select=*&order=time.desc&limit=20000"
+            # Ambil data dalam jumlah besar agar fitur riwayat tahunan bisa memuat semuanya
+            endpoint = f"{self.url}/rest/v1/metar_data?select=*&order=time.desc&limit=25000"
             res = requests.get(endpoint, headers=self._get_headers(), timeout=10)
             if res.status_code == 200:
-                data = res.json()
-                # Pastikan format kunci dictionary sesuai dengan yang dibaca frontend (huruf kecil)
-                return data
+                return res.json()
             return []
         except Exception as e:
             print(f"[SUPABASE] Error get_all_data: {e}", file=sys.stderr)
@@ -118,5 +112,4 @@ class SupabaseRestProxy:
     def sync_to_local(self, local_path):
         pass
 
-# Instance agar terpanggil mulus oleh index.py
 sheets_handler = SupabaseRestProxy()
