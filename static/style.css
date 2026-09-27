@@ -1009,6 +1009,43 @@ button.sidebar-link {
   border-radius: var(--radius-md);
 }
 
+.wind-rose-container {
+  position: relative;
+  width: 100%;
+  height: 480px;
+}
+
+.chart-manager-controls {
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.chart-period-buttons {
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.chart-period-button {
+  white-space: nowrap;
+}
+
+.chart-year-control {
+  align-items: center;
+}
+
+.chart-year-control label {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.chart-year-control .form-select {
+  min-width: 96px;
+  color: var(--text-primary);
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-color);
+}
+
 /* Charts Stack (Stacked Vertically) */
 .charts-stack {
   display: flex;

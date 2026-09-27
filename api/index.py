@@ -2014,6 +2014,113 @@ def fetch_history_from_source():
         
     return pd.DataFrame(columns=["station", "time", "metar"])
 
+@app.route("/api/charts/data")
+@admin_only_api
+def get_chart_period_data():
+    period = request.args.get("period", "today")
+    now = datetime.utcnow()
+    current_year = now.year
+
+    try:
+        selected_year = int(request.args.get("year", current_year))
+    except (TypeError, ValueError):
+        return jsonify({"error": "Invalid year"}), 400
+
+    if selected_year < 2011 or selected_year > current_year:
+        return jsonify({"error": "Year is outside the supported range"}), 400
+
+    if period == "today":
+        start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        end = start + timedelta(days=1)
+        title = "Hari ini"
+    elif period == "yesterday":
+        end = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        start = end - timedelta(days=1)
+        title = "Kemarin"
+    elif period in ("this_month", "last_month"):
+        this_month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        if period == "this_month":
+            start = this_month_start
+            end = now + timedelta(microseconds=1)
+        else:
+            end = this_month_start
+            start = (end - timedelta(days=1)).replace(day=1)
+        title = format_indonesian_date(start).split()[-2] + " " + str(start.year)
+    elif period == "year":
+        start = datetime(selected_year, 1, 1)
+        end = datetime(selected_year + 1, 1, 1)
+        title = str(selected_year)
+    else:
+        return jsonify({"error": "Unsupported period"}), 400
+
+    try:
+        history = fetch_history_from_source()
+        if history.empty or "time" not in history.columns or "station" not in history.columns:
+            history = pd.DataFrame(columns=["station", "time", "metar"])
+        else:
+            history["time"] = pd.to_datetime(history["time"], errors="coerce", utc=True).dt.tz_localize(None)
+            history = history.dropna(subset=["time"])
+            history = history[
+                (history["station"].fillna("").astype(str).str.strip().str.upper() == "WARR") &
+                (history["time"] >= start) &
+                (history["time"] < end)
+            ].sort_values("time")
+
+        labels = []
+        temps = []
+        pressures = []
+        winds = []
+        gusts = []
+        wind_records = []
+        label_format = "%H:%M" if period in ("today", "yesterday") else "%d/%m %H:%M"
+        if period == "year":
+            label_format = "%d/%m/%y %H:%M"
+
+        for _, row in history.iterrows():
+            observed_at = row["time"]
+            metar = str(row.get("metar", "") or "")
+            parsed = parse_metar(metar)
+            labels.append(observed_at.strftime(label_format))
+            temps.append(extract_temp(metar))
+            pressures.append(extract_pressure(metar))
+            winds.append(parsed.get("wind_speed_kt"))
+            gusts.append(parsed.get("wind_gust_kt"))
+
+            wind_match = re.search(r"\b(\d{3}|VRB)(\d{2,3})(?:G(\d{2,3}))?KT\b", metar)
+            if wind_match:
+                direction = wind_match.group(1)
+                wind_records.append({
+                    "dir": int(direction) if direction != "VRB" else "VRB",
+                    "speed": float(wind_match.group(2)),
+                    "utc_time": observed_at.strftime("%Y-%m-%d %H:%M UTC"),
+                    "wib_time": (observed_at + timedelta(hours=7)).strftime("%Y-%m-%d %H:%M WIB")
+                })
+
+        range_start = history["time"].iloc[0].strftime("%Y-%m-%d %H:%M UTC") if not history.empty else start.strftime("%Y-%m-%d %H:%M UTC")
+        empty_range_end = min(end, now) - timedelta(seconds=1)
+        range_end = history["time"].iloc[-1].strftime("%Y-%m-%d %H:%M UTC") if not history.empty else empty_range_end.strftime("%Y-%m-%d %H:%M UTC")
+
+        return jsonify({
+            "period": period,
+            "title": title,
+            "year": selected_year,
+            "labels": labels,
+            "temps": temps,
+            "pressures": pressures,
+            "winds": winds,
+            "gusts": gusts,
+            "windrose": {
+                "binned": bin_wind_data(wind_records),
+                "data": wind_records
+            },
+            "count": len(history),
+            "range": {"start": range_start, "end": range_end},
+            "source": "Sheets" if IS_VERCEL else "Local CSV"
+        })
+    except Exception as e:
+        print(f"[CHARTS] Period data error: {e}", file=sys.stderr)
+        return jsonify({"error": "Unable to load chart data"}), 500
+
 # ============ AUTH ROUTES ============
 @app.route("/login", methods=["GET", "POST"])
 def login_page():

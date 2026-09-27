@@ -12,16 +12,24 @@
             history_start.split()[0] if history_start else '' }}</span>
     </div>
     <div style="padding: 0 var(--space-lg) var(--space-md);">
-        <div class="manager-controls" style="margin-bottom: 20px;">
-            <div class="button-group">
-                <button id="btn-today" class="toggle-btn active" onclick="loadView('today')">
-                    Today <span id="count-today"></span>
+        <div class="manager-controls chart-manager-controls" style="margin-bottom: 20px;">
+            <div class="button-group chart-period-buttons">
+                <button id="btn-today" class="toggle-btn chart-period-button active" onclick="loadChartPeriod('today')">
+                    Today
                 </button>
-                <button id="btn-yesterday" class="toggle-btn" onclick="loadView('yesterday')">
-                    Yesterday <span id="count-yesterday"></span>
+                <button id="btn-yesterday" class="toggle-btn chart-period-button" onclick="loadChartPeriod('yesterday')">
+                    Yesterday
+                </button>
+                <button id="btn-this_month" class="toggle-btn chart-period-button" onclick="loadChartPeriod('this_month')">
+                    Bulan ini
+                </button>
+                <button id="btn-last_month" class="toggle-btn chart-period-button" onclick="loadChartPeriod('last_month')">
+                    Bulan kemarin
                 </button>
             </div>
-            <div class="flex gap-sm">
+            <div class="flex gap-sm chart-year-control">
+                <label for="chart-year">Tahun</label>
+                <select id="chart-year" class="form-select" onchange="loadChartPeriod('year', this.value)"></select>
                 <button class="btn btn-sm btn-outline" onclick="location.reload()">🔄 Refresh</button>
             </div>
         </div>
@@ -80,40 +88,16 @@
     </div>
 </div>
 
-{% endblock %}
+<div class="card chart-card fade-in" style="animation-delay:0.4s">
+    <div class="card-header">
+        <h3 class="card-title"><span class="icon">🧭</span> Wind Rose · Distribusi Arah Angin</h3>
+        <button class="btn btn-sm btn-outline" onclick="downloadChart('chartWindRose')">📥 Download</button>
+    </div>
+    <div id="chartWindRose" class="wind-rose-container"></div>
+    <div id="chartWindRose-info"
+        style="padding: 10px 16px; font-size: 0.85rem; color: var(--text-secondary); border-top: 1px solid var(--border-color);">
+        Loading wind distribution data...
+    </div>
+</div>
 
-{% block extra_scripts_bottom %}
-<!-- We inject the initial chart data rendered from the server -->
-{% if has_history %}
-<!-- Data Storage for Charts -->
-<div id="chart-data-store" style="display: none;" data-labels='{{ labels | tojson | safe }}'
-    data-temps='{{ temps | tojson | safe }}' data-pressures='{{ pressures | tojson | safe }}'
-    data-winds='{{ winds | tojson | safe }}' data-gusts='{{ gusts | tojson | safe }}'></div>
-
-<script>
-    // Trigger chart render explicitly since the HTML structure changed
-    document.addEventListener("DOMContentLoaded", function () {
-        const store = document.getElementById('chart-data-store');
-        if (!store) return;
-
-        try {
-            const labels = JSON.parse(store.getAttribute('data-labels'));
-            const temps = JSON.parse(store.getAttribute('data-temps'));
-            const pressures = JSON.parse(store.getAttribute('data-pressures'));
-            const winds = JSON.parse(store.getAttribute('data-winds'));
-            const gusts = JSON.parse(store.getAttribute('data-gusts'));
-
-            if (typeof updateCharts === 'function' && labels && labels.length > 0) {
-                console.log("Rendering initial charts from data-store");
-                // Needs a slight delay to ensure scripts (dashboard.js) are fully ready
-                setTimeout(() => {
-                    updateCharts(labels, temps, pressures, winds, gusts);
-                }, 300);
-            }
-        } catch (e) {
-            console.error("Error parsing chart data from store:", e);
-        }
-    });
-</script>
-{% endif %}
 {% endblock %}

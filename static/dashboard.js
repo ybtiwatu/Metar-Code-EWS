@@ -378,6 +378,13 @@ function updateChartColors() {
     if (typeof loadWindRose === 'function') {
         loadWindRose();
     }
+    if (document.getElementById('chartWindRose') && currentChartData) {
+        renderWindRose('chartWindRose', currentChartData.windrose, {
+            title: currentChartData.title,
+            isBinned: true,
+            subLabel: currentChartData.infoText
+        });
+    }
 }
 window.toggleTheme = toggleTheme;
 
@@ -1870,7 +1877,7 @@ function createWindChart() {
 // =======================
 async function loadHistory() {
     // Only run on main dashboard
-    if (window.location.pathname !== '/' && window.location.pathname !== '/metar' && window.location.pathname !== '/charts') return;
+    if (window.location.pathname !== '/' && window.location.pathname !== '/metar') return;
 
     // 🔥 Jika sedang melihat data 'yesterday', jangan timpa grafik dengan data polling terbaru
     if (typeof currentView !== 'undefined' && currentView !== 'today') {
@@ -1970,6 +1977,76 @@ function updateCharts(labels, temps, pressures, winds, gusts) {
     }
 }
 window.updateCharts = updateCharts;
+
+let currentChartPeriod = 'today';
+let currentChartYear = new Date().getUTCFullYear();
+let currentChartData = null;
+
+async function loadChartPeriod(period = 'today', year = currentChartYear) {
+    const yearSelect = document.getElementById('chart-year');
+    if (!document.getElementById('chartWindRose')) return;
+
+    currentChartPeriod = period;
+    if (period === 'year') {
+        currentChartYear = Number(year || (yearSelect && yearSelect.value));
+    }
+
+    document.querySelectorAll('.chart-period-button').forEach(button => button.classList.remove('active'));
+    const activeButton = document.getElementById(`btn-${period}`);
+    if (activeButton) activeButton.classList.add('active');
+
+    const query = new URLSearchParams({ period });
+    if (period === 'year') query.set('year', String(currentChartYear));
+
+    try {
+        const response = await fetch(`/api/charts/data?${query.toString()}`);
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Failed to load chart data');
+
+        currentChartData = data;
+        const infoText = `${data.range.start} to ${data.range.end} • ${data.count} records (from ${data.source})`;
+        data.infoText = infoText;
+
+        const displayDate = document.getElementById('display-date');
+        if (displayDate) displayDate.textContent = data.title;
+
+        updateCharts(data.labels, data.temps, data.pressures, data.winds, data.gusts);
+        ['tempChart-info', 'pressureChart-info', 'windChart-info'].forEach(id => {
+            const element = document.getElementById(id);
+            if (element) element.textContent = infoText;
+        });
+
+        const windRoseInfo = document.getElementById('chartWindRose-info');
+        if (windRoseInfo) windRoseInfo.textContent = infoText;
+        renderWindRose('chartWindRose', data.windrose, {
+            title: data.title,
+            isBinned: true,
+            subLabel: infoText
+        });
+    } catch (error) {
+        console.error('[CHART] Period data error:', error);
+        const info = document.getElementById('chartWindRose-info');
+        if (info) info.textContent = 'Gagal memuat data untuk periode ini.';
+    }
+}
+window.loadChartPeriod = loadChartPeriod;
+
+function initializeChartPeriodControls() {
+    const yearSelect = document.getElementById('chart-year');
+    if (!yearSelect) return;
+
+    const currentYear = new Date().getUTCFullYear();
+    yearSelect.replaceChildren();
+    for (let year = 2011; year <= currentYear; year += 1) {
+        const option = document.createElement('option');
+        option.value = String(year);
+        option.textContent = String(year);
+        yearSelect.appendChild(option);
+    }
+    yearSelect.value = String(currentYear);
+    currentChartYear = currentYear;
+    loadChartPeriod('today');
+}
 
 // =======================
 // CHART MIN/MAX INDICATORS
@@ -2496,9 +2573,10 @@ function renderWindRose(containerId, dataObj, options) {
     const container = document.getElementById(containerId);
     if (!container) return;
 
-    if (!dataObj || (dataObj.data && dataObj.data.length === 0 && !dataObj.binned)) {
+    if (!dataObj || (dataObj.data && dataObj.data.length === 0 && !dataObj.binned) ||
+        (dataObj.binned && dataObj.binned.total_count === 0)) {
         container.innerHTML =
-            '<div style="display:flex;justify-content:center;align-items:center;height:100%;color:#64748B;font-family:Inter;font-size:0.9rem;">No wind data available</div>';
+            '<div style="display:flex;justify-content:center;align-items:center;height:100%;color:var(--text-secondary);font-family:Inter;font-size:0.9rem;">No wind data available for this period</div>';
         return;
     }
 
@@ -2696,7 +2774,7 @@ function downloadChart(chartId) {
     console.log(`[DOWNLOAD] Initiating export for: ${chartId}`);
 
     // 1. Handle Plotly.js Charts (Compass & Roses)
-    const plotlyCharts = ['windCompassChart', 'windRose24h', 'windRoseMonth'];
+    const plotlyCharts = ['windCompassChart', 'windRose24h', 'windRoseMonth', 'chartWindRose'];
     if (plotlyCharts.includes(chartId)) {
         const isDark = currentTheme === 'dark'; // 🔥 Added local definition
         if (typeof Plotly !== 'undefined') {
@@ -2788,7 +2866,11 @@ document.addEventListener('DOMContentLoaded', function () {
     createCharts();
     createWindChart();
     updateCharts();
-    loadHistory();
+    if (window.location.pathname === '/charts') {
+        initializeChartPeriodControls();
+    } else {
+        loadHistory();
+    }
     // updateMiniTimeline(); // 🔥 DISABLED (As requested)
     loadWindCompass();
     loadWindRose();
@@ -3562,11 +3644,17 @@ async function loadView(viewType) {
 
 // Auto-refresh setiap 1 menit hanya jika di view 'today'
 setInterval(() => {
+    if (window.location.pathname === '/charts') {
+        if (currentChartPeriod === 'today') loadChartPeriod('today');
+        return;
+    }
     if (currentView === 'today') loadView('today');
 }, 60000);
 
 // Load data awal
-document.addEventListener('DOMContentLoaded', () => loadView('today'));
+document.addEventListener('DOMContentLoaded', () => {
+    if (window.location.pathname !== '/charts') loadView('today');
+});
 // =======================
 // MODAL HANDLERS (CITATION)
 // =======================
