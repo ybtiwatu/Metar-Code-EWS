@@ -24,6 +24,109 @@ try:
     from .sheets_handler import sheets_handler  # type: ignore
 except (ImportError, ValueError):
     from sheets_handler import sheets_handler  # type: ignore
+
+# Global cache state used by polling and history endpoints.
+_last_fetch_time = 0
+_cached_metar = None
+CACHE_TTL = 20
+_cached_history = None
+_history_cache_time = 0
+HISTORY_CACHE_TTL = 600
+_last_collection = {
+    "WARR": {"time": None, "metar": None, "attempts": 0}
+}
+
+def format_indonesian_date(dt):
+    days = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"]
+    months = [
+        "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+        "Juli", "Agustus", "September", "Oktober", "November", "Desember"
+    ]
+    return f"{days[dt.weekday()]}, {dt.day:02d} {months[dt.month - 1]} {dt.year}"
+
+def bin_wind_data(records):
+    sectors = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
+    bins = [5, 10, 15, 20, 25, 30, float("inf")]
+    bin_labels = ["0-5", "5-10", "10-15", "15-20", "20-25", "25-30", ">30"]
+    counts = [[0 for _ in bins] for _ in sectors]
+    times = [[[] for _ in bins] for _ in sectors]
+    calm_count = 0
+    total_count = 0
+
+    for record in records:
+        try:
+            speed = float(record.get("speed") or 0)
+            direction = record.get("dir")
+            total_count += 1
+            if speed <= 0 or direction in (None, "VRB"):
+                calm_count += 1
+                continue
+
+            sector_index = int(((float(direction) + 22.5) % 360) / 45)
+            bin_index = next(index for index, limit in enumerate(bins) if speed <= limit)
+            counts[sector_index][bin_index] += 1
+            utc_time = record.get("utc_time")
+            if utc_time:
+                times[sector_index][bin_index].append(utc_time)
+        except (TypeError, ValueError, StopIteration):
+            continue
+
+    binned_sectors = []
+    for sector_index, sector_name in enumerate(sectors):
+        sector_bins = []
+        for bin_index, label in enumerate(bin_labels):
+            count = counts[sector_index][bin_index]
+            percent = (count / total_count * 100) if total_count else 0
+            sector_bins.append({
+                "label": label,
+                "count": count,
+                "percentage": round(percent, 2),
+                "times": "<br>".join(sorted(set(times[sector_index][bin_index])))
+            })
+        binned_sectors.append({
+            "sector": sector_name,
+            "angle": sector_index * 45,
+            "bins": sector_bins
+        })
+
+    return {
+        "sectors": binned_sectors,
+        "calm_percent": round(calm_count / total_count * 100, 2) if total_count else 0,
+        "total_count": total_count,
+        "bin_labels": bin_labels
+    }
+
+# Vercel imports this module directly, so expose the Flask app at module scope.
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(current_dir)
+template_dir = os.path.join(project_root, "templates")
+static_dir = os.path.join(project_root, "static")
+
+app = Flask(__name__, template_folder=template_dir, static_folder=static_dir)
+application = app
+
+DEFAULT_HASH = "scrypt:32768:8:1$BtddDVF5DqG1GpWk$6aa36ddf49dd394f7e37ced0ff5bc61eab47fa4054b2397497b781d2d6e571992f4ee3c58b456b9548431e272e78a2199f99ca1ab3a87bdba8dce17b840b"
+ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "admin")
+ADMIN_PASSWORD_HASH = os.environ.get("ADMIN_PASSWORD_HASH", DEFAULT_HASH)
+GUEST_USERNAME = "guest"
+GUEST_PASSWORD_HASH = "scrypt:32768:8:1$h5GjkYvtTBvYwzoZ$84a0e759350707023579c04e16977f83400e7b9038c399a24d704cd49b5241be10bd1a6c5a8f681d5a2d76691f60c680b121e8a838cd0a6286425b856a5bfff"
+
+app.secret_key = os.environ.get(
+    "SECRET_KEY",
+    "46f05c593c66cab7e02c330ec1671298d03bedfdb08350bf485aed4a8b0d2b82"
+)
+SESSION_TIMEOUT = 30 * 60
+app.config.update(
+    PERMANENT_SESSION_LIFETIME=timedelta(minutes=30),
+    SESSION_COOKIE_NAME="metar_session",
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_PATH="/",
+    SESSION_COOKIE_SECURE=bool(os.environ.get("VERCEL") or os.environ.get("VERCEL_ENV")),
+)
+
+def login_required(f):
+    @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'admin_logged_in' not in session:
             if request.is_json or request.path.startswith('/api/'):
