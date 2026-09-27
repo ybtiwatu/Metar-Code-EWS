@@ -94,11 +94,19 @@ class GoogleSheetHandler:
             return False
 
         try:
-            # Format time if it's a datetime object dan bersihkan tanda petik jika ada
+            # Jika time berupa objek datetime, format ke M/D/YYYY H:M:S
             if isinstance(time, datetime):
-                time_str = time.strftime("%Y-%m-%d %H:%M:%S")
+                # Menggunakan trik lstrip('0') untuk memastikan angka di depan tidak ada nol-nya (contoh: 09 jadi 9)
+                month = time.strftime("%m").lstrip('0')
+                day = time.strftime("%d").lstrip('0')
+                year = time.strftime("%Y")
+                hour = time.strftime("%H").lstrip('0')
+                minute = time.strftime("%M")
+                second = time.strftime("%S")
+                
+                time_str = f"{month}/{day}/{year} {hour}:{minute}:{second}"
             else:
-                # Membersihkan tanda petik satu atau kutip ganda jika terbawa dari sumber data
+                # Jika bukan datetime (misal string), bersihkan tanda petik dulu
                 time_str = str(time).strip("'\"")
 
             print(f"[SHEETS] Appending row: {station}, {time_str}", file=sys.stderr)
