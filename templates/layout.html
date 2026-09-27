@@ -49,15 +49,11 @@
     <audio id="validationErrorSound" src="{{ url_for('static', filename='metarsalah.mp3') }}" preload="auto"></audio>
     <!-- <audio id="staleDataSound" src="{{ url_for('static', filename='metartelat.mp3') }}" preload="auto"></audio> -->
 
-    <!-- Overlay untuk mobile sidebar -->
-    <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
-
     <div class="app-layout" id="appLayout">
 
         <!-- ========== HEADER ========== -->
         <header class="app-header">
             <div class="header-left">
-                <button class="sidebar-toggle" id="sidebarToggle" title="Toggle Sidebar">☰</button>
                 <div class="header-title">
                     <h1>METAR Monitoring</h1>
                     <div class="station-badge">
@@ -817,10 +813,6 @@
                     Kontrol Utama
                 </h4>
                 <div class="help-controls">
-                    <div class="help-control-item">
-                        <span class="help-key">☰</span>
-                        <span>Toggle Sidebar — collapse/expand menu navigasi</span>
-                    </div>
                     <div class="help-control-item">
                         <span class="help-key">🌙</span>
                         <span>Dark/Light Mode — ubah tema tampilan (preferensi tersimpan)</span>

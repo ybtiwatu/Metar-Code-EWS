@@ -311,60 +311,6 @@ setInterval(updateClocks, 1000);
 updateClocks(); // Run immediately on load
 
 // =======================
-// SIDEBAR TOGGLE - UPDATED FOR STICKY LAYOUT
-// =======================
-function initSidebar() {
-    const toggle = document.getElementById('sidebarToggle');
-    const sidebar = document.getElementById('appSidebar');
-    const overlay = document.getElementById('sidebarOverlay');
-    const layout = document.getElementById('appLayout');
-
-    if (!toggle || !sidebar) return;
-
-    // Check saved state
-    const isMobile = window.innerWidth <= 768;
-
-    toggle.addEventListener('click', () => {
-        if (window.innerWidth <= 768) {
-            // Mobile: toggle sidebar dengan overlay
-            sidebar.classList.toggle('open');
-            if (overlay) overlay.classList.toggle('active');
-        } else {
-            // Desktop: toggle collapse
-            layout.classList.toggle('sidebar-collapsed');
-            localStorage.setItem('sidebarCollapsed', layout.classList.contains('sidebar-collapsed'));
-        }
-    });
-
-    // Close sidebar saat resize ke desktop
-    window.addEventListener('resize', () => {
-        if (window.innerWidth > 768) {
-            sidebar.classList.remove('open');
-            if (overlay) overlay.classList.remove('active');
-        }
-    });
-
-    // Auto-close on link click (mobile)
-    document.querySelectorAll('.sidebar-link').forEach(link => {
-        link.addEventListener('click', () => {
-            if (window.innerWidth <= 768) {
-                closeSidebar();
-            }
-        });
-    });
-}
-
-function closeSidebar() {
-    const sidebar = document.getElementById('appSidebar');
-    const overlay = document.getElementById('sidebarOverlay');
-    if (sidebar) sidebar.classList.remove('open');
-    if (overlay) overlay.classList.remove('active');
-}
-
-// Global expose
-window.closeSidebar = closeSidebar;
-
-// =======================
 // THEME MANAGEMENT (Dark/Light)
 // =======================
 function applyTheme(theme) {
@@ -2829,9 +2775,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // 2. Clocks
     updateClocks();
-
-    // 3. Sidebar
-    initSidebar();
 
     // 4. Theme (Apply saved preference)
     applyTheme(currentTheme);

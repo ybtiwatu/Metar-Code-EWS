@@ -55,7 +55,6 @@
   /* Dimensions */
   --header-height: 72px;
   --sidebar-width: 260px;
-  --sidebar-collapsed: 70px;
 
   /* Transitions */
   --transition-fast: 150ms ease;
@@ -162,22 +161,10 @@ a:hover {
   grid-template-areas:
     "header header"
     "sidebar main";
-  grid-template-columns: var(--sidebar-width) 1fr;
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
   grid-template-rows: var(--header-height) 1fr;
   min-height: 100vh;
   width: 100%;
-  transition: grid-template-columns var(--transition-smooth);
-}
-
-.app-layout.sidebar-collapsed {
-  grid-template-columns: var(--sidebar-collapsed) 1fr;
-}
-
-/* Hide labels and headers in collapsed sidebar */
-.sidebar-collapsed .sidebar-link .label,
-.sidebar-collapsed .sidebar-section-header,
-.sidebar-collapsed .sidebar-station-info {
-  display: none !important;
 }
 
 /* ============================================= */
@@ -350,26 +337,6 @@ a:hover {
   }
 }
 
-/* Sidebar Toggle in Header */
-.sidebar-toggle {
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  color: var(--text-on-primary);
-  width: 36px;
-  height: 36px;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.1rem;
-  transition: var(--transition-fast);
-}
-
-.sidebar-toggle:hover {
-  background: rgba(255, 255, 255, 0.2);
-}
-
 /* Theme Toggle in Header */
 .theme-toggle {
   background: rgba(255, 255, 255, 0.1);
@@ -504,17 +471,6 @@ a:hover {
 .sidebar-link .label {
   opacity: 1;
   transition: opacity var(--transition-fast);
-}
-
-.app-layout.sidebar-collapsed .sidebar-link .label {
-  opacity: 0;
-  width: 0;
-  overflow: hidden;
-}
-
-.app-layout.sidebar-collapsed .sidebar-link {
-  justify-content: center;
-  padding: 12px;
 }
 
 button.sidebar-link {
@@ -2183,21 +2139,6 @@ body.low-visibility .chart-card {
 
 /* Tablet */
 @media (max-width: 1199px) {
-  .app-layout {
-    grid-template-columns: var(--sidebar-collapsed) 1fr;
-  }
-
-  .sidebar-link .label {
-    opacity: 0;
-    width: 0;
-    overflow: hidden;
-  }
-
-  .sidebar-link {
-    justify-content: center;
-    padding: 12px;
-  }
-
   .metar-hero {
     grid-template-columns: 1fr;
   }
@@ -2220,10 +2161,9 @@ body.low-visibility .chart-card {
   .app-layout {
     grid-template-areas:
       "header header"
-      "main main";
-    /* Sidebar hidden di mobile */
-    grid-template-columns: 1fr;
-    grid-template-rows: 56px 1fr auto;
+      "sidebar main";
+    grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+    grid-template-rows: var(--header-height) 1fr;
   }
 
   .app-header {
@@ -2291,7 +2231,6 @@ body.low-visibility .chart-card {
     font-size: 0.6rem;
   }
 
-  .sidebar-toggle,
   .theme-toggle {
     width: 30px;
     height: 30px;
@@ -2316,43 +2255,6 @@ body.low-visibility .chart-card {
 
   .airplane-decor-container {
     display: none !important;
-  }
-
-  .app-sidebar {
-    position: fixed;
-    left: -260px;
-    /* Hidden by default */
-    top: 56px;
-    /* Match header height */
-    width: 260px;
-    height: calc(100vh - 56px);
-    transition: left 0.3s ease;
-    z-index: 950;
-    box-shadow: 10px 0 30px rgba(0, 0, 0, 0.3);
-    flex-direction: column;
-    padding: var(--space-md) 0;
-    background: var(--bg-surface);
-  }
-
-  .app-sidebar.open {
-    left: 0;
-    /* Muncul saat toggle */
-  }
-
-  .sidebar-overlay {
-    display: none;
-    position: fixed;
-    top: 56px;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.5);
-    backdrop-filter: blur(2px);
-    z-index: 940;
-  }
-
-  .sidebar-overlay.active {
-    display: block;
   }
 
   .sidebar-nav {
@@ -2756,12 +2658,6 @@ body.rain-active::after {
   user-select: none;
   pointer-events: none;
   opacity: 0.85;
-}
-
-/* Hide or shrink when sidebar is collapsed */
-.sidebar-collapsed .airplane-decor-container,
-.sidebar-collapsed .sidebar-section-header {
-  display: none !important;
 }
 
 .dashboard-airplane-img:hover,
@@ -4400,10 +4296,6 @@ body.fog-active .rain-indicator.active {
   .desktop-hidden {
     display: none !important;
   }
-
-  .sidebar-overlay {
-    display: none !important;
-  }
 }
 
 /* ============================================= */
@@ -4412,48 +4304,10 @@ body.fog-active .rain-indicator.active {
 @media (max-width: 768px) {
   .app-layout {
     grid-template-areas:
-      "header"
-      "main";
-    grid-template-columns: 1fr;
+      "header header"
+      "sidebar main";
+    grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
     grid-template-rows: var(--header-height) auto;
-  }
-
-  .app-sidebar {
-    position: fixed;
-    top: var(--header-height);
-    left: calc(-1 * var(--sidebar-width));
-    width: var(--sidebar-width);
-    bottom: 0;
-    height: auto;
-    background: var(--bg-sidebar);
-    overflow-y: auto;
-    z-index: 1000;
-    transition: left var(--transition-smooth);
-    box-shadow: var(--shadow-xl);
-  }
-
-  .app-sidebar.open {
-    left: 0;
-  }
-
-  .sidebar-overlay {
-    display: none;
-    position: fixed;
-    top: var(--header-height);
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.5);
-    z-index: 999;
-    backdrop-filter: blur(2px);
-  }
-
-  .sidebar-overlay.active {
-    display: block;
-  }
-
-  body.rain-active .sidebar-overlay {
-    z-index: 1001;
   }
 
   /* Force airplane decor to be visible if hidden by other rules */
