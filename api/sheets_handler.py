@@ -51,10 +51,16 @@ class SupabaseRestProxy:
     def get_all_data(self, bypass_cache=False):
         if not self.url or not self.key: return []
         try:
-            # Ambil data dalam jumlah besar agar fitur riwayat tahunan bisa memuat semuanya
-            endpoint = f"{self.url}/rest/v1/metar_data?select=*&order=time.desc&limit=25000"
-            res = requests.get(endpoint, headers=self._get_headers(), timeout=10)
-            if res.status_code == 200:
+            # Gunakan rentang limit yang besar (misal hingga 50.000 data)
+            endpoint = f"{self.url}/rest/v1/metar_data?select=*&order=time.desc&limit=50000"
+            
+            # Tambahkan prefer header khusus agar Supabase mengizinkan data lebih dari 1000 baris
+            headers = self._get_headers()
+            headers["Range-Unit"] = "items"
+            headers["Range"] = "0-49999"  # Mengambil dari baris ke-0 hingga 49.999
+            
+            res = requests.get(endpoint, headers=headers, timeout=15)
+            if res.status_code in [200, 206]: # 206 adalah status Partial Content untuk rentang data besar
                 return res.json()
             return []
         except Exception as e:
