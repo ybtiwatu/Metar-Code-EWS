@@ -20,7 +20,6 @@ class SupabaseRestProxy:
 
     def save_metar(self, station, time, metar):
         if not self.url or not self.key: 
-            print("[SUPABASE ERROR] URL atau KEY kosong!", file=sys.stderr)
             return False
         
         try:
@@ -32,23 +31,28 @@ class SupabaseRestProxy:
                     time_str = time_str.split('.')[0]
 
             endpoint = f"{self.url}/rest/v1/metar_data"
+            
+            # Buat ID unik berbasis milidetik agar tidak pernah null dan tidak bentrok
+            import time as t_mod
+            unique_id = int(t_mod.time() * 1000)
+
             payload = {
+                "id": unique_id,  # Mengisi kolom id secara manual dari Python
                 "station": str(station).strip(), 
                 "time": time_str, 
                 "metar": str(metar).strip()
             }
             
             headers = self._get_headers()
-            headers["Prefer"] = "return=representation" # Agar Supabase mengembalikan respons detail
+            headers["Prefer"] = "resolution=ignore-duplicates"
             
-            res = requests.post(endpoint, json=payload, headers=headers, timeout=10)
-            
-            # Cetak respons asli ke Vercel Logs untuk diagnosa
-            print(f"[SUPABASE DEBUG] Status: {res.status_code}, Response: {res.text}", file=sys.stderr)
+            res = requests.post(endpoint, json=payload, headers=headers, timeout=5)
             
             if res.status_code in [200, 201]:
+                print(f"[SUPABASE] Berhasil menyimpan METAR untuk {station}", file=sys.stderr)
                 return True
             else:
+                print(f"[SUPABASE] Gagal menyimpan: {res.text}", file=sys.stderr)
                 return False
         except Exception as e:
             print(f"[SUPABASE EXCEPTION] {e}", file=sys.stderr)
