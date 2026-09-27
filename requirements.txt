@@ -13,4 +13,4 @@ itsdangerous==2.1.2
 click==8.1.7
 gspread==6.1.0
 google-auth==2.29.0
-supabase==2.3.4
+requests==2.31.0

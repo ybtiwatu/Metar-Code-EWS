@@ -1,64 +1,94 @@
 import os
 import sys
 from datetime import datetime
-from supabase import create_client, Client
+import requests  # type: ignore
 
-class SupabaseProxy:
+class SupabaseRestProxy:
     def __init__(self):
-        url = os.environ.get("SUPABASE_URL")
-        key = os.environ.get("SUPABASE_KEY")
-        self.client = create_client(url, key) if url and key else None
+        self.url = os.environ.get("SUPABASE_URL")
+        self.key = os.environ.get("SUPABASE_KEY")
+        if self.url:
+            self.url = self.url.rstrip('/')
+
+    def _get_headers(self):
+        return {
+            "apikey": self.key,
+            "Authorization": f"Bearer {self.key}",
+            "Content-Type": "application/json",
+            "Prefer": "return=minimal"
+        }
 
     def save_metar(self, station, time, metar):
-        if not self.client: return False
+        if not self.url or not self.key: return False
         time_str = time.strftime("%Y-%m-%d %H:%M:%S") if isinstance(time, datetime) else str(time)
         try:
-            self.client.table("metar_data").insert({"station": station, "time": time_str, "metar": metar}).execute()
-            return True
-        except:
+            endpoint = f"{self.url}/rest/v1/metar_data"
+            payload = {"station": station, "time": time_str, "metar": metar}
+            res = requests.post(endpoint, json=payload, headers=self._get_headers(), timeout=5)
+            return res.status_code in [200, 201]
+        except Exception as e:
+            print(f"[SUPABASE] Error save_metar: {e}", file=sys.stderr)
             return False
 
     def get_recent_data(self, limit=20, bypass_cache=False):
-        if not self.client: return []
+        if not self.url or not self.key: return []
         try:
-            res = self.client.table("metar_data").select("*").order("time", desc=True).limit(limit).execute()
-            return res.data[::-1] 
-        except:
+            endpoint = f"{self.url}/rest/v1/metar_data?select=*&order=time.desc&limit={limit}"
+            res = requests.get(endpoint, headers=self._get_headers(), timeout=5)
+            if res.status_code == 200:
+                data = res.json()
+                return data[::-1]  # Balik urutan agar kronologis
+            return []
+        except Exception as e:
+            print(f"[SUPABASE] Error get_recent_data: {e}", file=sys.stderr)
             return []
 
     def get_all_data(self, bypass_cache=False):
-        if not self.client: return []
+        if not self.url or not self.key: return []
         try:
-            # Mengambil 5000 data terakhir agar pencarian riwayat tidak memicu Timeout 10 detik Vercel
-            res = self.client.table("metar_data").select("*").order("time", desc=True).limit(5000).execute()
-            return res.data
-        except:
+            # Ambil hingga 5000 data terakhir agar aman dari timeout
+            endpoint = f"{self.url}/rest/v1/metar_data?select=*&order=time.desc&limit=5000"
+            res = requests.get(endpoint, headers=self._get_headers(), timeout=8)
+            if res.status_code == 200:
+                return res.json()
+            return []
+        except Exception as e:
+            print(f"[SUPABASE] Error get_all_data: {e}", file=sys.stderr)
             return []
             
     def save_wind_calculation(self, data):
-        if not self.client: return False
+        if not self.url or not self.key: return False
         try:
-            self.client.table("wind_logs").insert(data).execute()
-            return True
-        except: return False
+            endpoint = f"{self.url}/rest/v1/wind_logs"
+            res = requests.post(endpoint, json=data, headers=self._get_headers(), timeout=5)
+            return res.status_code in [200, 201]
+        except Exception as e:
+            print(f"[SUPABASE] Error save_wind: {e}", file=sys.stderr)
+            return False
 
     def check_if_metar_logged(self, metar_raw):
-        if not self.client: return False
+        if not self.url or not self.key: return False
         try:
-            res = self.client.table("wind_logs").select("metar_raw").eq("metar_raw", metar_raw).limit(1).execute()
-            return len(res.data) > 0
-        except: return False
+            endpoint = f"{self.url}/rest/v1/wind_logs?select=metar_raw&metar_raw=eq.{metar_raw}&limit=1"
+            res = requests.get(endpoint, headers=self._get_headers(), timeout=5)
+            if res.status_code == 200:
+                return len(res.json()) > 0
+            return False
+        except:
+            return False
 
     def get_wind_logs(self, limit=100, runway=None, start_date=None, end_date=None):
-        if not self.client: return []
+        if not self.url or not self.key: return []
         try:
-            query = self.client.table("wind_logs").select("*").order("timestamp", desc=True)
-            if runway: query = query.eq("runway", runway)
-            if start_date: query = query.gte("timestamp", start_date)
-            if end_date: query = query.lte("timestamp", end_date)
-            res = query.limit(limit).execute()
-            return res.data
-        except: return []
+            endpoint = f"{self.url}/rest/v1/wind_logs?select=*&order=timestamp.desc&limit={limit}"
+            if runway:
+                endpoint += f"&runway=eq.{runway}"
+            res = requests.get(endpoint, headers=self._get_headers(), timeout=5)
+            if res.status_code == 200:
+                return res.json()
+            return []
+        except:
+            return []
 
     def get_wind_logs_by_metar(self, limit=50):
         logs = self.get_wind_logs(limit=limit * 2)
@@ -75,7 +105,7 @@ class SupabaseProxy:
         return list(grouped.values())
         
     def sync_to_local(self, local_path):
-        pass # Fitur ini tidak lagi dibutuhkan oleh Supabase
+        pass
 
-# Menjaga nama instansi tetap 'sheets_handler' agar file index.py tidak error
-sheets_handler = SupabaseProxy()
+# Instance agar terpanggil mulus oleh index.py
+sheets_handler = SupabaseRestProxy()
