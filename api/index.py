@@ -53,7 +53,7 @@ def format_indonesian_date(dt):
 def bin_wind_data(records):
     """
     Bin raw wind records into 16 sectors and 7 speed categories.
-    Berdasarkan standar BMKG/WRPlot.
+    Uses standard wind-direction sectors and speed intervals.
     Sectors: N, NE, E, SE, S, SW, W, NW (8 Sectors)
     Bins: 0-5, 5-10, 10-15, 15-20, 20-25, 25-30, >30 (knots)
     """
@@ -216,7 +216,8 @@ def admin_only_api(f):
     def decorated_function(*args, **kwargs):
         # Allow Vercel/External Cron to bypass session checks via header/token
         is_vercel_cron = request.headers.get('x-vercel-cron') == '1'
-        valid_cron_token = request.args.get('auth') == os.environ.get('CRON_TOKEN', 'bmkg-juanda-secret-123')
+        cron_token = os.environ.get('CRON_TOKEN')
+        valid_cron_token = bool(cron_token) and request.args.get('auth') == cron_token
         
         if is_vercel_cron or valid_cron_token:
             return f(*args, **kwargs)
@@ -1703,7 +1704,7 @@ def windrose_api(station):
                         })
              except: pass
 
-    # Binning data for BMKG Standard
+    # Bin wind observations into direction sectors and speed intervals.
     binned_data = bin_wind_data(filtered_data)
     
     # Determine source (logic matches implementation above)
@@ -2967,9 +2968,9 @@ def cron_sync():
     # Auth check
     is_vercel = request.headers.get('x-vercel-cron') == '1'
     token = request.args.get('auth')
-    expected = os.environ.get('CRON_TOKEN', 'bmkg-juanda-secret-123')
+    expected = os.environ.get('CRON_TOKEN')
     
-    if not is_vercel and token != expected:
+    if not is_vercel and (not expected or token != expected):
         return jsonify({"error": "Unauthorized"}), 401
     
     station = "WARR"

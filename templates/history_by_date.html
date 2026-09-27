@@ -381,7 +381,7 @@
             return null;
         }).filter(x => x);
 
-        // --- BMKG STANDARD BINNED WIND ROSE ---
+        // --- Wind rose grouped by direction and speed ---
         function binWindData(rawPoints) {
             const sectors_list = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
             const bins = [5, 10, 15, 20, 25, 30, Infinity];

@@ -1,26 +1,26 @@
 /* ============================================= */
-/* BMKG AVIATION STANDARD - LIGHT MODE THEME     */
+/* METAR dashboard theme                            */
 /* METAR Auto Dashboard v2.0                     */
 /* ============================================= */
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
 :root {
-  /* BMKG Aviation Color Palette */
-  --bmkg-primary: #1E3A5F;
-  --bmkg-secondary: #2E5C8A;
-  --bmkg-accent: #E8B339;
-  --bmkg-danger: #DC2626;
-  --bmkg-success: #059669;
-  --bmkg-warning: #F59E0B;
+  /* Application palette */
+  --color-primary: #0F766E;
+  --color-secondary: #155E75;
+  --color-accent: #F59E0B;
+  --color-danger: #DC2626;
+  --color-success: #059669;
+  --color-warning: #F59E0B;
 
   /* Light Mode Background & Surfaces */
   --bg-body: #F1F5F9;
   --bg-surface: #FFFFFF;
   --bg-surface-alt: #F8FAFC;
-  --bg-header: linear-gradient(135deg, #1E3A5F 0%, #2E5C8A 100%);
+  --bg-header: linear-gradient(135deg, #0F766E 0%, #155E75 100%);
   --bg-sidebar: #FFFFFF;
-  --bg-sidebar-active: #E8B339;
+  --bg-sidebar-active: #F59E0B;
 
   /* Text */
   --text-primary: #0F172A;
@@ -28,7 +28,7 @@
   --text-muted: #94A3B8;
   --text-on-primary: #FFFFFF;
   --text-on-accent: #0F172A;
-  --text-accent: #E8B339;
+  --text-accent: #F59E0B;
 
   /* Borders & Shadows */
   --border-color: #E2E8F0;
@@ -77,7 +77,7 @@
   --bg-surface-alt: #1e293b;
   --bg-header: linear-gradient(135deg, #020617 0%, #0f172a 100%);
   --bg-sidebar: #0f172a;
-  --bg-sidebar-active: #E8B339;
+  --bg-sidebar-active: #F59E0B;
 
   /* Text */
   --text-primary: #F1F5F9;
@@ -85,7 +85,7 @@
   --text-muted: #64748B;
   --text-on-primary: #F1F5F9;
   --text-on-accent: #0F172A;
-  --text-accent: #E8B339;
+  --text-accent: #F59E0B;
 
   /* Borders & Shadows */
   --border-color: #1e293b;
@@ -145,12 +145,12 @@ body {
 }
 
 a {
-  color: var(--bmkg-secondary);
+  color: var(--color-secondary);
   text-decoration: none;
 }
 
 a:hover {
-  color: var(--bmkg-primary);
+  color: var(--color-primary);
 }
 
 /* ============================================= */
@@ -193,7 +193,7 @@ a:hover {
   /* Di atas semua elemen lain */
   height: var(--header-height);
   background: var(--bg-header);
-  border-bottom: 3px solid var(--bmkg-accent);
+  border-bottom: 3px solid var(--color-accent);
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.15);
 
   display: flex;
@@ -236,7 +236,7 @@ a:hover {
   backdrop-filter: blur(8px);
   padding: 4px 14px;
   border-radius: var(--radius-full);
-  color: var(--bmkg-accent);
+  color: var(--color-accent);
   margin-top: 2px;
 }
 
@@ -280,15 +280,15 @@ a:hover {
 .connection-dot {
   width: 8px;
   height: 8px;
-  background: var(--bmkg-danger);
+  background: var(--color-danger);
   border-radius: 50%;
-  box-shadow: 0 0 6px var(--bmkg-danger);
+  box-shadow: 0 0 6px var(--color-danger);
   transition: all 0.3s ease;
 }
 
 .connection-dot.online {
-  background: var(--bmkg-success);
-  box-shadow: 0 0 8px var(--bmkg-success);
+  background: var(--color-success);
+  box-shadow: 0 0 8px var(--color-success);
 }
 
 .utc-clock,
@@ -329,12 +329,12 @@ a:hover {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: var(--bmkg-danger);
+  background: var(--color-danger);
 }
 
 .connection-dot.online {
-  background: var(--bmkg-success);
-  box-shadow: 0 0 8px var(--bmkg-success);
+  background: var(--color-success);
+  box-shadow: 0 0 8px var(--color-success);
   animation: breathe 2s ease-in-out infinite;
 }
 
@@ -342,11 +342,11 @@ a:hover {
 
   0%,
   100% {
-    box-shadow: 0 0 6px var(--bmkg-success);
+    box-shadow: 0 0 6px var(--color-success);
   }
 
   50% {
-    box-shadow: 0 0 14px var(--bmkg-success), 0 0 28px rgba(5, 150, 105, 0.3);
+    box-shadow: 0 0 14px var(--color-success), 0 0 28px rgba(5, 150, 105, 0.3);
   }
 }
 
@@ -388,7 +388,7 @@ a:hover {
 
 .theme-toggle:hover {
   background: rgba(255, 255, 255, 0.2);
-  border-color: var(--bmkg-accent);
+  border-color: var(--color-accent);
 }
 
 /* Sound Button in Header */
@@ -406,13 +406,13 @@ a:hover {
 
 .sound-toggle:hover {
   background: rgba(232, 179, 57, 0.3);
-  border-color: var(--bmkg-accent);
+  border-color: var(--color-accent);
 }
 
 .sound-toggle.active {
-  background: var(--bmkg-accent);
+  background: var(--color-accent);
   color: var(--text-on-accent);
-  border-color: var(--bmkg-accent);
+  border-color: var(--color-accent);
 }
 
 /* ============================================= */
@@ -485,11 +485,11 @@ a:hover {
 
 .sidebar-link:hover {
   background: var(--bg-body);
-  color: var(--bmkg-primary);
+  color: var(--color-primary);
 }
 
 .sidebar-link.active {
-  background: var(--bmkg-accent);
+  background: var(--color-accent);
   color: var(--text-on-accent);
   box-shadow: 0 2px 8px rgba(232, 179, 57, 0.3);
 }
@@ -680,7 +680,7 @@ button.sidebar-link {
   content: '';
   width: 4px;
   height: 18px;
-  background: linear-gradient(180deg, var(--bmkg-accent), var(--bmkg-primary));
+  background: linear-gradient(180deg, var(--color-accent), var(--color-primary));
   border-radius: 2px;
   flex-shrink: 0;
 }
@@ -708,7 +708,7 @@ button.sidebar-link {
 .metar-raw-panel {
   background: var(--bg-surface);
   border: 1px solid var(--border-color);
-  border-left: 4px solid var(--bmkg-accent);
+  border-left: 4px solid var(--color-accent);
   border-radius: var(--radius-lg);
   padding: var(--space-xl);
   box-shadow: var(--shadow-sm);
@@ -838,7 +838,7 @@ button.sidebar-link {
 
 /* Status border colors */
 .metar-raw-panel.status-danger {
-  border-left-color: var(--bmkg-danger);
+  border-left-color: var(--color-danger);
   background: linear-gradient(135deg, #FFF5F5, #FFF);
   animation: dangerPulseBorder 2s ease-in-out infinite;
 }
@@ -848,7 +848,7 @@ button.sidebar-link {
 }
 
 .metar-raw-panel.status-warning {
-  border-left-color: var(--bmkg-warning);
+  border-left-color: var(--color-warning);
   background: linear-gradient(135deg, #FFFBEB, #FFF);
 }
 
@@ -889,7 +889,7 @@ button.sidebar-link {
 }
 
 .param-card:hover {
-  border-color: var(--bmkg-accent);
+  border-color: var(--color-accent);
   box-shadow: var(--shadow-md);
   transform: translateY(-2px);
 }
@@ -925,7 +925,7 @@ button.sidebar-link {
 }
 
 .param-card .param-trend.up {
-  color: var(--bmkg-danger);
+  color: var(--color-danger);
 }
 
 .param-card .param-trend.down {
@@ -1010,19 +1010,19 @@ button.sidebar-link {
 }
 
 .status-online {
-  color: var(--bmkg-success);
+  color: var(--color-success);
 }
 
 .status-running {
-  color: var(--bmkg-success);
+  color: var(--color-success);
 }
 
 .status-paused {
-  color: var(--bmkg-warning);
+  color: var(--color-warning);
 }
 
 .status-offline {
-  color: var(--bmkg-danger);
+  color: var(--color-danger);
 }
 
 /* ============================================= */
@@ -1244,13 +1244,13 @@ button.sidebar-link {
 }
 
 .runway-btn:hover {
-  border-color: var(--bmkg-secondary);
+  border-color: var(--color-secondary);
   background: var(--bg-body);
 }
 
 .runway-btn.active {
-  border-color: var(--bmkg-accent);
-  background: var(--bmkg-accent);
+  border-color: var(--color-accent);
+  background: var(--color-accent);
   color: var(--text-on-accent);
 }
 
@@ -1294,16 +1294,16 @@ button.sidebar-link {
 }
 
 .xw-safe {
-  color: var(--bmkg-success);
+  color: var(--color-success);
 }
 
 .xw-safe .xw-status {
   background: #ECFDF5;
-  color: var(--bmkg-success);
+  color: var(--color-success);
 }
 
 .xw-monitor {
-  color: var(--bmkg-warning);
+  color: var(--color-warning);
 }
 
 .xw-monitor .xw-status {
@@ -1312,12 +1312,12 @@ button.sidebar-link {
 }
 
 .xw-critical {
-  color: var(--bmkg-danger);
+  color: var(--color-danger);
 }
 
 .xw-critical .xw-status {
   background: #FEF2F2;
-  color: var(--bmkg-danger);
+  color: var(--color-danger);
   animation: criticalPulse 2s infinite;
 }
 
@@ -1346,13 +1346,13 @@ button.sidebar-link {
 
 .ts-status.active {
   background: #FEF2F2;
-  color: var(--bmkg-danger);
+  color: var(--color-danger);
   border: 1px solid #FECACA;
 }
 
 .ts-status.clear {
   background: #ECFDF5;
-  color: var(--bmkg-success);
+  color: var(--color-success);
   border: 1px solid #A7F3D0;
 }
 
@@ -1397,7 +1397,7 @@ button.sidebar-link {
 .ts-radar .airport-dot {
   width: 8px;
   height: 8px;
-  background: var(--bmkg-primary);
+  background: var(--color-primary);
   border-radius: 50%;
   position: absolute;
   top: 50%;
@@ -1464,7 +1464,7 @@ button.sidebar-link {
   background: var(--bg-body);
   padding: var(--space-lg);
   border-radius: var(--radius-md);
-  border-left: 4px solid var(--bmkg-secondary);
+  border-left: 4px solid var(--color-secondary);
 }
 
 /* ============================================= */
@@ -1487,7 +1487,7 @@ button.sidebar-link {
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, var(--bmkg-primary), var(--bmkg-secondary));
+  background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
   color: var(--text-on-primary);
   box-shadow: 0 2px 8px rgba(30, 58, 95, 0.3);
 }
@@ -1499,7 +1499,7 @@ button.sidebar-link {
 }
 
 .btn-accent {
-  background: var(--bmkg-accent);
+  background: var(--color-accent);
   color: var(--text-on-accent);
 }
 
@@ -1515,8 +1515,8 @@ button.sidebar-link {
 }
 
 .btn-outline:hover {
-  border-color: var(--bmkg-primary);
-  color: var(--bmkg-primary);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
   background: var(--bg-body);
 }
 
@@ -1539,7 +1539,7 @@ button.sidebar-link {
 }
 
 .btn-danger {
-  background: var(--bmkg-danger);
+  background: var(--color-danger);
   color: white;
 }
 
@@ -1561,7 +1561,7 @@ button.sidebar-link {
 
 .form-input:focus {
   outline: none;
-  border-color: var(--bmkg-accent);
+  border-color: var(--color-accent);
   box-shadow: 0 0 0 3px rgba(232, 179, 57, 0.15);
 }
 
@@ -1602,9 +1602,9 @@ button.sidebar-link {
 }
 
 .data-table thead th {
-  background: var(--bmkg-primary);
+  background: var(--color-primary);
   color: #fbbf24;
-  /* BMKG Gold for better visibility on dark blue */
+  /* Amber text keeps table headings distinct from the teal header. */
   font-weight: 700;
   font-size: 0.72rem;
   text-transform: uppercase;
@@ -1938,7 +1938,7 @@ button.sidebar-link {
 .metar-status-tooltip .tooltip-title {
   font-weight: 700;
   margin-bottom: 4px;
-  color: var(--bmkg-primary);
+  color: var(--color-primary);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -1953,7 +1953,7 @@ button.sidebar-link {
   margin-top: 6px;
   padding-top: 6px;
   border-top: 1px solid var(--border-color-light);
-  color: var(--bmkg-danger);
+  color: var(--color-danger);
   font-size: 0.75rem;
   font-family: 'JetBrains Mono', monospace;
 }
@@ -1975,7 +1975,7 @@ button.sidebar-link {
 .toast {
   background: var(--bg-surface);
   border: 1px solid var(--border-color);
-  border-left: 4px solid var(--bmkg-success);
+  border-left: 4px solid var(--color-success);
   border-radius: var(--radius-md);
   padding: 14px 18px;
   min-width: 280px;
@@ -1987,11 +1987,11 @@ button.sidebar-link {
 }
 
 .toast.toast-warning {
-  border-left-color: var(--bmkg-warning);
+  border-left-color: var(--color-warning);
 }
 
 .toast.toast-danger {
-  border-left-color: var(--bmkg-danger);
+  border-left-color: var(--color-danger);
 }
 
 .toast-title {
@@ -2131,15 +2131,15 @@ button.sidebar-link {
 }
 
 .vis-bar-fill.vis-good {
-  background: var(--bmkg-success);
+  background: var(--color-success);
 }
 
 .vis-bar-fill.vis-moderate {
-  background: var(--bmkg-warning);
+  background: var(--color-warning);
 }
 
 .vis-bar-fill.vis-poor {
-  background: var(--bmkg-danger);
+  background: var(--color-danger);
 }
 
 /* ============================================= */
@@ -2147,7 +2147,7 @@ button.sidebar-link {
 /* ============================================= */
 
 .copy-feedback {
-  color: var(--bmkg-success);
+  color: var(--color-success);
   font-weight: 600;
   font-size: 0.85rem;
   opacity: 0;
@@ -2497,19 +2497,19 @@ body.low-visibility .chart-card {
 }
 
 .text-danger {
-  color: var(--bmkg-danger);
+  color: var(--color-danger);
 }
 
 .text-success {
-  color: var(--bmkg-success);
+  color: var(--color-success);
 }
 
 .text-warning {
-  color: var(--bmkg-warning);
+  color: var(--color-warning);
 }
 
 .text-accent {
-  color: var(--bmkg-accent);
+  color: var(--color-accent);
 }
 
 .fw-bold {
@@ -2815,7 +2815,7 @@ body.rain-active::after {
 /* Final Dark Mode Refinements */
 [data-theme="dark"] .data-table thead th {
   background: #0f172a;
-  color: var(--bmkg-accent);
+  color: var(--color-accent);
   border-bottom: 1px solid var(--border-color);
 }
 
@@ -4618,13 +4618,13 @@ body.fog-active .rain-indicator.active {
 .flash-danger {
   background: rgba(239, 68, 68, 0.1);
   border: 1px solid rgba(239, 68, 68, 0.2);
-  color: var(--bmkg-danger);
+  color: var(--color-danger);
 }
 
 .flash-warning {
   background: rgba(245, 158, 11, 0.1);
   border: 1px solid rgba(245, 158, 11, 0.2);
-  color: var(--bmkg-warning);
+  color: var(--color-warning);
 }
 
 .flash-info {
@@ -4636,7 +4636,7 @@ body.fog-active .rain-indicator.active {
 .flash-success {
   background: rgba(34, 197, 94, 0.1);
   border: 1px solid rgba(34, 197, 94, 0.2);
-  color: var(--bmkg-success);
+  color: var(--color-success);
 }
 
 [data-theme="dark"] .flash-danger {

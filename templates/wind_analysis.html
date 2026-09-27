@@ -221,11 +221,11 @@
             <div class="help-card" style="background: var(--bg-body);">
                 <div
                     style="font-family: 'Consolas', 'Courier New', monospace; font-size: 1.1rem; padding: 15px; border-radius: 8px; background: rgba(0,0,0,0.05);">
-                    <div style="margin-bottom: 10px; color: var(--bmkg-danger);">• Crosswind = Kecepatan Angin × sin(θ)
+                    <div style="margin-bottom: 10px; color: var(--color-danger);">• Crosswind = Kecepatan Angin × sin(θ)
                     </div>
-                    <div style="color: var(--bmkg-success);">• Headwind = Kecepatan Angin × cos(θ)</div>
+                    <div style="color: var(--color-success);">• Headwind = Kecepatan Angin × cos(θ)</div>
                 </div>
-                <p class="help-text-small" style="margin-top: 15px; font-weight: bold; color: var(--bmkg-danger);">
+                <p class="help-text-small" style="margin-top: 15px; font-weight: bold; color: var(--color-danger);">
                     💡 CATATAN: Jika hasil perhitungan Headwind Component bernilai negatif (-), maka secara otomatis
                     komponen tersebut adalah Tailwind.
                 </p>
@@ -240,7 +240,7 @@
             </h4>
             <div class="help-grid">
                 <div class="help-card">
-                    <h5 class="help-card-title" style="color: var(--bmkg-primary);">Kasus A: Runway 10 (Crosswind)</h5>
+                    <h5 class="help-card-title" style="color: var(--color-primary);">Kasus A: Runway 10 (Crosswind)</h5>
                     <p class="help-text-small" style="margin-bottom: 10px;">Angin dari <strong>130°</strong> kecepatan
                         <strong>20 knot</strong>, Runway heading <strong>100°</strong>:
                     </p>
@@ -250,15 +250,15 @@
                         <li>Crosswind = 20 × sin(30°) = 10 knot</li>
                     </ul>
                 </div>
-                <div class="help-card" style="border-color: var(--bmkg-danger);">
-                    <h5 class="help-card-title" style="color: var(--bmkg-danger);">Kasus B: Runway 28 (Tailwind!)</h5>
+                <div class="help-card" style="border-color: var(--color-danger);">
+                    <h5 class="help-card-title" style="color: var(--color-danger);">Kasus B: Runway 28 (Tailwind!)</h5>
                     <p class="help-text-small" style="margin-bottom: 10px;">Angin dari <strong>100°</strong> kecepatan
                         <strong>10 knot</strong>, Runway heading <strong>280°</strong>:
                     </p>
                     <ul class="help-list" style="font-family: monospace;">
                         <li>θ = 100° - 280° = -180°</li>
                         <li>Headwind = 10 × cos(-180°) = -10 knot</li>
-                        <li style="color: var(--bmkg-danger); font-weight: bold;">Hasil: Terdapat Tailwind 10 knot.</li>
+                        <li style="color: var(--color-danger); font-weight: bold;">Hasil: Terdapat Tailwind 10 knot.</li>
                     </ul>
                 </div>
             </div>
@@ -272,19 +272,19 @@
             </h4>
             <div class="help-usage-grid">
                 <div class="help-usage-item">
-                    <span class="help-step" style="background: var(--bmkg-accent);">15°</span>
+                    <span class="help-step" style="background: var(--color-accent);">15°</span>
                     <div><strong>1/4</strong> kecepatan angin</div>
                 </div>
                 <div class="help-usage-item">
-                    <span class="help-step" style="background: var(--bmkg-accent);">30°</span>
+                    <span class="help-step" style="background: var(--color-accent);">30°</span>
                     <div><strong>1/2</strong> kecepatan angin</div>
                 </div>
                 <div class="help-usage-item">
-                    <span class="help-step" style="background: var(--bmkg-accent);">45°</span>
+                    <span class="help-step" style="background: var(--color-accent);">45°</span>
                     <div><strong>3/4</strong> kecepatan angin</div>
                 </div>
                 <div class="help-usage-item">
-                    <span class="help-step" style="background: var(--bmkg-accent);">60°</span>
+                    <span class="help-step" style="background: var(--color-accent);">60°</span>
                     <div><strong>Seluruh</strong> kecepatan angin</div>
                 </div>
             </div>
@@ -307,7 +307,7 @@
 
     <div class="help-modal-footer">
         <span>Sumber: <a href="https://www.tarmacview.com/glossary/crosswind-component/" target="_blank"
-                style="color: var(--bmkg-primary); text-decoration: underline;">TarmacView Aviation Glossary</a></span>
+                style="color: var(--color-primary); text-decoration: underline;">TarmacView Aviation Glossary</a></span>
         <button class="btn btn-sm btn-primary" onclick="closeCitationModal()">Tutup Halaman</button>
     </div>
 </div>

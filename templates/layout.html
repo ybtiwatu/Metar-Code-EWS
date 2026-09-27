@@ -5,10 +5,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>
-        {% block title %}METAR Auto Dashboard — BMKG Aviation{% endblock %}
+        {% block title %}METAR Data Dashboard{% endblock %}
     </title>
     <meta name="description"
-        content="METAR Data Processing & Visualization Platform for BMKG Aviation Weather Monitoring">
+        content="Independent METAR data processing and aviation weather dashboard">
     <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/favicon.png') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 
@@ -58,8 +58,6 @@
         <header class="app-header">
             <div class="header-left">
                 <button class="sidebar-toggle" id="sidebarToggle" title="Toggle Sidebar">☰</button>
-                <img src="{{ url_for('static', filename='images/BMKG_LOGO.png') }}" alt="BMKG Logo" class="header-logo"
-                    width="40" height="40">
                 <div class="header-title">
                     <h1>METAR Monitoring</h1>
                     <div class="station-badge">
@@ -71,8 +69,8 @@
                             <!-- Show station code specifically for history/parser or default name -->
                             {% block header_station_text %}
                             <span class="station-name">
-                                <span class="mobile-hidden">Stasiun Meteorologi Kelas I Juanda</span>
-                                <span class="desktop-hidden">BMKG<br>Juanda</span>
+                                <span class="mobile-hidden">Bandara Juanda · WARR</span>
+                                <span class="desktop-hidden">Juanda<br>WARR</span>
                             </span>
                             {% endblock %}
                         </div>
@@ -176,7 +174,7 @@
                     <span class="label" id="soundLabelSidebar">Sound OFF</span>
                 </button>
                 <a href="/logout" class="sidebar-link desktop-hidden" id="nav-logout-sidebar"
-                    style="color: var(--bmkg-danger);">
+                    style="color: var(--color-danger);">
                     <span class="label">Logout</span>
                 </a>
             </nav>
@@ -643,7 +641,7 @@
                 <p class="help-text">
                     <strong>METAR Auto Dashboard v2.0</strong> merupakan platform pengolahan data cuaca penerbangan
                     (METAR)
-                    yang terintegrasi penuh dengan sistem BMKG dan Google Sheets. Dashboard ini dirancang untuk
+                    yang terintegrasi dengan Google Sheets. Dashboard ini dirancang untuk
                     menyediakan informasi
                     cuaca Bandara Juanda secara <em>real-time</em> bagi operasional penerbangan dan prakirawan cuaca,
                     menggabungkan data METAR, analisis visual, narasi cuaca otomatis, dan sistem peringatan dini

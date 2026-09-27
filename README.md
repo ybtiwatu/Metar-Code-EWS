@@ -6,7 +6,7 @@
 [![Deployment](https://img.shields.io/badge/deploy-Vercel-black?logo=vercel)](https://vercel.com/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-**METAR Auto Dashboard v2.0** adalah sistem monitoring cuaca penerbangan tercanggih yang dirancang untuk operasional BMKG Aviation. Sistem ini melakukan otomasi pengambilan data dari **NOAA Aviation Weather Server**, memprosesnya secara instan, dan menyajikannya dalam antarmuka yang responsif, modern, dan sangat akurat.
+**METAR Data Dashboard** adalah aplikasi independen untuk pemantauan cuaca penerbangan di Bandara Juanda. Sistem ini mengotomatisasi pengambilan data dari **NOAA Aviation Weather Server**, memprosesnya, dan menyajikannya dalam antarmuka yang responsif.
 
 ---
 
@@ -49,7 +49,7 @@ metar-auto-dashboard/
 │   ├── history_by_date.html # Pencarian History Data
 │   └── manual_parser.html   # Manual Toolset
 ├── static/                # Modern Assets
-│   ├── style.css          # BMKG Design System v2 (Responsive & Sticky)
+│   ├── style.css          # Responsive dashboard styles
 │   ├── dashboard.js       # Logika Frontend & State Management
 │   └── sound/             # Audio Assets (Alarm & Notify)
 ├── data/                  # Local Cache
@@ -113,4 +113,4 @@ Project ini siap di-deploy langsung ke Vercel:
 This project is licensed under the **MIT License**.
 
 ---
-*Designed with ❤️ for BMKG Aviation Weather Monitoring.*
+*Independent aviation weather monitoring for Juanda (WARR).*

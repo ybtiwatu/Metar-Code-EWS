@@ -1,6 +1,6 @@
 if (typeof window.isManualSession === "undefined") window.isManualSession = false;
 // ============================================
-// METAR Auto Dashboard v2.0 — BMKG Aviation
+// Independent METAR Data Dashboard
 // ============================================
 
 // =======================
@@ -2558,7 +2558,7 @@ function renderWindRose(containerId, dataObj, options) {
 
     const isDark = currentTheme === 'dark';
 
-    // 🔥 BMKG STANDARD: BINNING DATA VISUALIZATION
+    // Bin wind observations by direction and speed for the wind-rose chart.
     if (dataObj.binned) {
         const binned = dataObj.binned;
         const labels = binned.bin_labels;
@@ -3422,7 +3422,7 @@ class MetarStaleMonitor {
                     <div class="stale-warning-box">
                         <strong>⚠️ PERINGATAN</strong>
                         <p>Data METAR seharusnya sudah update pada <strong>${expectedTime} UTC</strong> namun masih menampilkan data <strong>${metarTime} UTC</strong> setelah lebih dari ${this.graceMinutes} menit.</p>
-                        <p class="stale-cause">Kemungkinan: Alat pengirim data BMKG bermasalah atau koneksi terputus.</p>
+                        <p class="stale-cause">Kemungkinan: Sumber data cuaca bermasalah atau koneksi terputus.</p>
                     </div>
                 </div>
                 <button class="stale-alert-dismiss" onclick="window.metarStaleMonitor.dismiss()">
