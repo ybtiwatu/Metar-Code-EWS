@@ -22,6 +22,15 @@ class SupabaseRestProxy:
         if not self.url or not self.key: return False
         time_str = time.strftime("%Y-%m-%d %H:%M:%S") if isinstance(time, datetime) else str(time)
         try:
+            # 1. Cek dulu apakah data dengan station dan time yang sama sudah ada
+            check_endpoint = f"{self.url}/rest/v1/metar_data?select=id&station=eq.{station}&time=eq.{time_str}&limit=1"
+            check_res = requests.get(check_endpoint, headers=self._get_headers(), timeout=5)
+            
+            if check_res.status_code == 200 and len(check_res.json()) > 0:
+                # Data sudah ada, batalkan penyimpanan (mencegah duplikat)
+                return True 
+
+            # 2. Jika belum ada, simpan data baru
             endpoint = f"{self.url}/rest/v1/metar_data"
             payload = {"station": station, "time": time_str, "metar": metar}
             res = requests.post(endpoint, json=payload, headers=self._get_headers(), timeout=5)
