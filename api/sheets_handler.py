@@ -94,11 +94,12 @@ class GoogleSheetHandler:
             return False
 
         try:
-            # Format time if it's a datetime object
+            # Format time if it's a datetime object dan bersihkan tanda petik jika ada
             if isinstance(time, datetime):
                 time_str = time.strftime("%Y-%m-%d %H:%M:%S")
             else:
-                time_str = str(time)
+                # Membersihkan tanda petik satu atau kutip ganda jika terbawa dari sumber data
+                time_str = str(time).strip("'\"")
 
             print(f"[SHEETS] Appending row: {station}, {time_str}", file=sys.stderr)
             sheet.append_row([station, time_str, metar])
