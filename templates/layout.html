@@ -122,12 +122,6 @@
                     <span class="label">METAR</span>
                 </a>
 
-                <a href="/qam_report" class="sidebar-link {% block nav_active_qam_report %}{% endblock %}"
-                    id="nav-qam-report">
-                    <span class="icon">📄</span>
-                    <span class="label">QAM/MET Report</span>
-                </a>
-
                 <div class="sidebar-section-header">Analisis & Alat</div>
 
                 <a href="/charts" class="sidebar-link {% block nav_active_charts %}{% endblock %}" id="nav-charts">
@@ -153,7 +147,7 @@
                     <span class="label">Cari Riwayat</span>
                 </a>
 
-                <a href="/manual_parser" class="sidebar-link {% block nav_active_parser %}{% endblock %}" id="nav-qam">
+                <a href="/manual_parser" class="sidebar-link {% block nav_active_parser %}{% endblock %}" id="nav-parser">
                     <span class="icon">🔧</span>
                     <span class="label">METAR Converter</span>
                 </a>
@@ -707,7 +701,6 @@
                         Tools & Utilitas
                     </h5>
                     <ul class="help-list">
-                        <li>QAM/MET Report Generator otomatis</li>
                         <li>Narasi cuaca otomatis dalam Bahasa Indonesia (termasuk TEMPO)</li>
                         <li>Manual METAR Parser — decode METAR secara mandiri</li>
                         <li>Riwayat data METAR berdasarkan tanggal dengan filter WIB/UTC</li>
@@ -728,8 +721,8 @@
                         <span class="help-step">🏠</span>
                         <div>
                             <strong>Dashboard</strong>
-                            <p>Tampilan utama dengan data METAR real-time, grafik, wind compass, wind rose, narasi
-                                cuaca, dan QAM.</p>
+                            <p>Tampilan utama dengan data METAR real-time, grafik, wind compass, wind rose, dan narasi
+                                cuaca.</p>
                         </div>
                     </div>
                     <div class="help-usage-item">
@@ -737,13 +730,6 @@
                         <div>
                             <strong>METAR</strong>
                             <p>Halaman decode METAR lengkap dengan detail setiap grup data cuaca.</p>
-                        </div>
-                    </div>
-                    <div class="help-usage-item">
-                        <span class="help-step">📄</span>
-                        <div>
-                            <strong>QAM/MET Report</strong>
-                            <p>Generate laporan MET Report resmi untuk keperluan operasional penerbangan.</p>
                         </div>
                     </div>
                     <div class="help-usage-item">
@@ -772,7 +758,7 @@
                         <span class="help-step">🔧</span>
                         <div>
                             <strong>Parser Manual</strong>
-                            <p>Input kode METAR secara manual untuk di-decode, validasi, dan generate QAM/narasi.</p>
+                            <p>Input kode METAR secara manual untuk di-decode, validasi, dan membuat narasi cuaca.</p>
                         </div>
                     </div>
                     <div class="help-usage-item">

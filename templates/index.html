@@ -136,27 +136,12 @@
 </div>
 {% endif %}
 
-<div class="grid-2 fade-in" style="animation-delay:0.14s">
-    <div class="card">
-        <div class="card-header">
-            <h3 class="card-title"><span class="icon">📄</span> QAM / MET Report</h3>
-            <div class="flex gap-sm">
-                <button class="btn btn-sm btn-outline" onclick="copyQam()">📋 Copy</button>
-                <a href="/download_qam?station={{ station }}&qam={{ qam | urlencode }}"
-                    class="btn btn-sm btn-outline">📥 Download</a>
-            </div>
-        </div>
-        <pre class="qam-display"
-            id="qamDisplay">{% if qam %}{{ qam }}{% else %}Wait for the latest METAR data...{% endif %}</pre>
-        <span class="copy-feedback" id="qamCopyFeedback">Copied!</span>
+<div class="card fade-in" style="animation-delay:0.14s">
+    <div class="card-header">
+        <h3 class="card-title"><span class="icon">📝</span> Narasi Cuaca</h3>
     </div>
-    <div class="card">
-        <div class="card-header">
-            <h3 class="card-title"><span class="icon">📝</span> Narasi Cuaca</h3>
-        </div>
-        <div class="narrative-display" id="narrativeDisplay">{% if narrative %}{{ narrative }}{% else %}Waiting for data
-            update...{% endif %}</div>
-    </div>
+    <div class="narrative-display" id="narrativeDisplay">{% if narrative %}{{ narrative }}{% else %}Waiting for data
+        update...{% endif %}</div>
 </div>
 
 <!-- ========== UNIFIED WIND MONITORING ========== -->
