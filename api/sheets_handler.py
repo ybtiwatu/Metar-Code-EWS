@@ -19,16 +19,15 @@ class SupabaseRestProxy:
         }
 
     def save_metar(self, station, time, metar):
-        if not self.url or not self.key: return False
+        if not self.url or not self.key: 
+            print("[SUPABASE ERROR] URL atau KEY kosong!", file=sys.stderr)
+            return False
         
         try:
-            # Jika time berupa objek datetime, ubah ke format string standar 'YYYY-MM-DD HH:MM:SS'
             if isinstance(time, datetime):
                 time_str = time.strftime("%Y-%m-%d %H:%M:%S")
             else:
-                # Bersihkan string waktu jika ada karakter 'T' dari standar ISO
                 time_str = str(time).replace('T', ' ').replace('Z', '').strip()
-                # Ambil hingga detik saja jika ada milidetik berlebih
                 if '.' in time_str:
                     time_str = time_str.split('.')[0]
 
@@ -39,20 +38,20 @@ class SupabaseRestProxy:
                 "metar": str(metar).strip()
             }
             
-            # Abaikan jika sudah ada duplikat berdasarkan unique constraint
             headers = self._get_headers()
-            headers["Prefer"] = "resolution=ignore-duplicates"
+            headers["Prefer"] = "return=representation" # Agar Supabase mengembalikan respons detail
             
-            res = requests.post(endpoint, json=payload, headers=headers, timeout=5)
+            res = requests.post(endpoint, json=payload, headers=headers, timeout=10)
+            
+            # Cetak respons asli ke Vercel Logs untuk diagnosa
+            print(f"[SUPABASE DEBUG] Status: {res.status_code}, Response: {res.text}", file=sys.stderr)
             
             if res.status_code in [200, 201]:
-                print(f"[SUPABASE] Berhasil menyimpan METAR untuk {station}", file=sys.stderr)
                 return True
             else:
-                print(f"[SUPABASE] Gagal menyimpan: {res.text}", file=sys.stderr)
                 return False
         except Exception as e:
-            print(f"[SUPABASE] Error save_metar: {e}", file=sys.stderr)
+            print(f"[SUPABASE EXCEPTION] {e}", file=sys.stderr)
             return False
 
     def get_recent_data(self, limit=20, bypass_cache=False):
