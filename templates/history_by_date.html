@@ -11,35 +11,6 @@
 
 {% block head %}
 <style>
-    @keyframes redPulse {
-        0% {
-            background-color: rgba(239, 68, 68, 0.05);
-        }
-        50% {
-            background-color: rgba(239, 68, 68, 0.2);
-        }
-        100% {
-            background-color: rgba(239, 68, 68, 0.05);
-        }
-    }
-    .metar-row-missing {
-        animation: redPulse 2s infinite ease-in-out;
-    }
-    .metar-row-missing td {
-        color: #ef4444 !important;
-        font-weight: 600;
-    }
-    .metar-status-missing {
-        background: #FEF2F2;
-        color: #991B1B;
-        border: 1px solid #FCA5A5;
-        animation: pulseInvalid 2s ease-in-out infinite;
-    }
-    [data-theme="dark"] .metar-status-missing {
-        background: rgba(239, 68, 68, 0.2);
-        color: #FCA5A5;
-        border-color: rgba(239, 68, 68, 0.4);
-    }
 </style>
 {% endblock %}
 
@@ -70,11 +41,15 @@
 
 {% if results is not none %}
 
-{% if labels and labels|length > 0 %}
-<!-- Period Info -->
 <div class="card fade-in">
-    <div class="card-header">
+    <div class="card-header" style="flex-wrap: wrap; gap: 12px;">
         <h3 class="card-title"><span class="icon">📊</span> METAR History — {{ station }}</h3>
+        <form method="post" action="/download_history" style="margin:0; margin-left:auto;">
+            <input type="hidden" name="icao" value="{{ station }}">
+            <input type="hidden" name="start_date" value="{{ request.form.start_date }}">
+            <input type="hidden" name="end_date" value="{{ request.form.end_date }}">
+            <button class="btn btn-sm btn-outline" type="submit">📥 Download CSV</button>
+        </form>
     </div>
     {% if start_date and end_date %}
     <div style="background:var(--bg-body);padding:10px 16px;border-radius:var(--radius-sm);font-size:0.9rem;border-left:4px solid var(--accent-primary);">
@@ -82,13 +57,15 @@
             📅 Showing data from <strong>{{ start_date.replace('T', ' ') }}</strong> to <strong>{{ end_date.replace('T', ' ') }}</strong>
         </div>
         <div style="display: flex; align-items: center; gap: 12px; font-weight: 600;">
-            <span style="color:var(--accent-primary)">📊 {% if results is not none %}{{ results|length }}{% else %}0{% endif %} records found</span>
+            <span style="color:var(--accent-primary)">{{ results|length }} records found</span>
             <span style="height: 12px; width: 1px; background: var(--border-color);"></span>
             <span style="color:var(--text-muted); font-size: 0.8rem; font-weight: 400;">🌐 Searches are performed in WIB and converted to UTC database time.</span>
         </div>
     </div>
     {% endif %}
 </div>
+
+{% if labels and labels|length > 0 %}
 
 <!-- Charts Stacked Vertically (3 Rows) -->
 <div class="charts-stack fade-in">
@@ -147,172 +124,6 @@
         </div>
     </div>
 {% endif %}
-
-<!-- Table -->
-<div class="card fade-in" style="margin-top: 20px;">
-    <div class="card-header" style="flex-wrap: wrap; gap: 12px;">
-        <h3 class="card-title"><span class="icon">📋</span> History Results — {{ station }}</h3>
-        <div style="display: flex; align-items: center; gap: 12px; margin-left: auto;">
-            <!-- DROPDOWN FILTER METAR / SPECI -->
-            <div class="filter-dropdown-wrapper" style="display: flex; align-items: center; gap: 8px;">
-                <label for="reportTypeFilter" style="font-size: 0.85rem; color: var(--text-secondary); font-weight: 600; white-space: nowrap;">
-                    Tipe Laporan:
-                </label>
-                <select id="reportTypeFilter" class="form-select" onchange="filterReportType()" 
-                    style="padding: 6px 30px 6px 12px; border-radius: 6px; border: 1px solid var(--border-color); 
-                           background-color: var(--bg-card); color: var(--text-primary); font-size: 0.85rem; 
-                           cursor: pointer; appearance: none; min-width: 130px;
-                           background-image: url('data:image/svg+xml;charset=UTF-8,%3csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%2364748b\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'%3e%3cpolyline points=\'6 9 12 15 18 9\'%3e%3c/polyline%3e%3c/svg%3e'); 
-                           background-repeat: no-repeat; background-position: right 10px center; background-size: 14px;">
-                    <option value="all">📋 Semua Data</option>
-                    <option value="METAR">📡 METAR</option>
-                    <option value="SPECI">⚠️ SPECI</option>
-                </select>
-            </div>
-            <form method="post" action="/download_history" style="margin:0;">
-                <input type="hidden" name="icao" value="{{ station }}">
-                <input type="hidden" name="start_date" value="{{ request.form.start_date }}">
-                <input type="hidden" name="end_date" value="{{ request.form.end_date }}">
-                <button class="btn btn-sm btn-outline">📥 Download CSV</button>
-            </form>
-        </div>
-    </div>
-    <div class="table-responsive">
-        <table class="data-table modern-table" id="history-results-table">
-            <thead>
-                <tr>
-                    <th class="col-time" style="text-transform: uppercase;">TIME UTC</th>
-                    <th class="col-station" style="text-transform: uppercase;">STATION</th>
-                    <th class="col-metar" style="text-transform: uppercase;">METAR DATA</th>
-                    <th class="col-status" style="text-transform: uppercase;">STATUS</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for row in results.itertuples() %}
-                <tr class="history-row {% if row.is_missing %}metar-row-missing{% endif %}" 
-                    data-metar="{{ row.metar }}" 
-                    data-time="{{ row.time }}" 
-                    data-validation='{{ row.validation_json | safe }}'
-                    {% if row.is_missing %}data-missing="true"{% endif %}>
-                    <td class="col-time">{{ row.time }}</td>
-                    <td class="col-station">{{ row.station }}</td>
-                    <td class="metar-cell col-metar">
-                        {% if row.is_missing %}
-                            <span class="missing-placeholder-text" style="color: #ef4444; font-weight: bold; display: flex; align-items: center; gap: 6px;">
-                                ⚠️ DATA METAR TIDAK MASUK
-                            </span>
-                        {% else %}
-                            {{ row.metar }}{% if not row.metar.endswith('=') %}={% endif %}
-                        {% endif %}
-                    </td>
-                    <td class="col-status">
-                        {% if row.is_missing %}
-                            <div class="metar-status-indicator metar-status-missing">
-                                <span class="metar-status-icon">⚠️</span>
-                                <span>MISSING</span>
-                                <div class="metar-status-tooltip">
-                                    <div class="tooltip-title">
-                                        <span>⚠️</span>
-                                        <span>Data Missing</span>
-                                    </div>
-                                    <div class="tooltip-desc">Data METAR pada jam ini tidak masuk/diterima oleh sistem.</div>
-                                </div>
-                            </div>
-                        {% else %}
-                            <!-- Status will be injected by JS for consistency -->
-                            <span class="loading-status">...</span>
-                        {% endif %}
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-</div>
-
-<script>
-    // Process History Table Status & Highlighting
-    document.addEventListener('DOMContentLoaded', function() {
-        const rows = document.querySelectorAll('.history-row');
-        rows.forEach(row => {
-            try {
-                if (row.getAttribute('data-missing') === 'true') {
-                    return;
-                }
-                const metar = row.getAttribute('data-metar');
-                const time = row.getAttribute('data-time');
-                const validationJson = row.getAttribute('data-validation');
-                const validationResults = JSON.parse(validationJson);
-                
-                if (typeof getMetarStatus === 'function' && typeof createStatusIndicatorHTML === 'function') {
-                    const status = getMetarStatus(metar, time, validationResults);
-                    const statusHtml = createStatusIndicatorHTML(status);
-                    
-                    // Inject Status Indicator
-                    const statusCell = row.querySelector('.col-status');
-                    if (statusCell) statusCell.innerHTML = statusHtml;
-                    
-                    // Apply Row Highlighting
-                    if (status.type === 'speci') {
-                        row.classList.add('metar-row-speci');
-                    } else if (status.type === 'invalid') {
-                        row.classList.add('metar-row-invalid');
-                    }
-                }
-            } catch (e) {
-                console.error("[HISTORY] Error processing row status:", e);
-            }
-        });
-
-        // Trigger red toasts/popups for missing METAR data
-        const missingRows = document.querySelectorAll('.history-row[data-missing="true"]');
-        if (missingRows.length > 0) {
-            const missingTimes = Array.from(missingRows).map(row => {
-                const timeStr = row.getAttribute('data-time');
-                try {
-                    const parts = timeStr.split(' ');
-                    const dateParts = parts[0].split('-');
-                    const timeParts = parts[1].split(':');
-                    const utcDate = new Date(Date.UTC(
-                        parseInt(dateParts[0]),
-                        parseInt(dateParts[1]) - 1,
-                        parseInt(dateParts[2]),
-                        parseInt(timeParts[0]),
-                        parseInt(timeParts[1]),
-                        parseInt(timeParts[2] || 0)
-                    ));
-                    
-                    const timeFormatter = new Intl.DateTimeFormat('id-ID', {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        hour12: false,
-                        timeZone: 'Asia/Jakarta'
-                    });
-                    const dateFormatter = new Intl.DateTimeFormat('id-ID', {
-                        day: '2-digit',
-                        month: 'short',
-                        timeZone: 'Asia/Jakarta'
-                    });
-                    return `${timeFormatter.format(utcDate)} WIB (${dateFormatter.format(utcDate)})`;
-                } catch (e) {
-                    return timeStr + ' UTC';
-                }
-            });
-            
-            if (missingTimes.length <= 3) {
-                missingTimes.forEach(t => {
-                    if (typeof showToast === 'function') {
-                        showToast('⚠️ DATA METAR HILANG', `Data METAR di jam ${t} tidak masuk!`, 'danger', 15000, false);
-                    }
-                });
-            } else {
-                if (typeof showToast === 'function') {
-                    showToast('⚠️ DATA METAR HILANG', `Terdapat ${missingTimes.length} data METAR yang tidak masuk pada pencarian ini!`, 'danger', 15000, false);
-                }
-            }
-        }
-    });
-</script>
 {% endif %}
 
 {% endblock %}
