@@ -55,11 +55,13 @@ class SupabaseRestProxy:
     def get_all_data(self, bypass_cache=False):
         if not self.url or not self.key: return []
         try:
-            # Ambil hingga 5000 data terakhir agar aman dari timeout
-            endpoint = f"{self.url}/rest/v1/metar_data?select=*&order=time.desc&limit=5000"
-            res = requests.get(endpoint, headers=self._get_headers(), timeout=8)
+            # Ambil hingga 20.000 data agar mencakup rentang waktu yang lebih luas
+            endpoint = f"{self.url}/rest/v1/metar_data?select=*&order=time.desc&limit=20000"
+            res = requests.get(endpoint, headers=self._get_headers(), timeout=10)
             if res.status_code == 200:
-                return res.json()
+                data = res.json()
+                # Pastikan format kunci dictionary sesuai dengan yang dibaca frontend (huruf kecil)
+                return data
             return []
         except Exception as e:
             print(f"[SUPABASE] Error get_all_data: {e}", file=sys.stderr)
