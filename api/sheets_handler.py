@@ -20,18 +20,37 @@ class SupabaseRestProxy:
 
     def save_metar(self, station, time, metar):
         if not self.url or not self.key: return False
-        time_str = time.strftime("%Y-%m-%d %H:%M:%S") if isinstance(time, datetime) else str(time)
+        
         try:
-            # Cek duplikat
-            check_endpoint = f"{self.url}/rest/v1/metar_data?select=id&station=eq.{station}&time=eq.{time_str}&limit=1"
-            check_res = requests.get(check_endpoint, headers=self._get_headers(), timeout=5)
-            if check_res.status_code == 200 and len(check_res.json()) > 0:
-                return True 
+            # Jika time berupa objek datetime, ubah ke format string standar 'YYYY-MM-DD HH:MM:SS'
+            if isinstance(time, datetime):
+                time_str = time.strftime("%Y-%m-%d %H:%M:%S")
+            else:
+                # Bersihkan string waktu jika ada karakter 'T' dari standar ISO
+                time_str = str(time).replace('T', ' ').replace('Z', '').strip()
+                # Ambil hingga detik saja jika ada milidetik berlebih
+                if '.' in time_str:
+                    time_str = time_str.split('.')[0]
 
             endpoint = f"{self.url}/rest/v1/metar_data"
-            payload = {"station": station, "time": time_str, "metar": metar}
-            res = requests.post(endpoint, json=payload, headers=self._get_headers(), timeout=5)
-            return res.status_code in [200, 201]
+            payload = {
+                "station": str(station).strip(), 
+                "time": time_str, 
+                "metar": str(metar).strip()
+            }
+            
+            # Abaikan jika sudah ada duplikat berdasarkan unique constraint
+            headers = self._get_headers()
+            headers["Prefer"] = "resolution=ignore-duplicates"
+            
+            res = requests.post(endpoint, json=payload, headers=headers, timeout=5)
+            
+            if res.status_code in [200, 201]:
+                print(f"[SUPABASE] Berhasil menyimpan METAR untuk {station}", file=sys.stderr)
+                return True
+            else:
+                print(f"[SUPABASE] Gagal menyimpan: {res.text}", file=sys.stderr)
+                return False
         except Exception as e:
             print(f"[SUPABASE] Error save_metar: {e}", file=sys.stderr)
             return False
