@@ -49,35 +49,6 @@ let autoFetchEnabled = localStorage.getItem('autoFetchEnabled') === null ? true 
 // const socket = io(window.location.origin);
 
 // =======================
-// AUTH MANAGER
-// =======================
-const AuthManager = {
-    isAuthenticated: false,
-    async init() {
-        try {
-            const res = await fetch('/api/auth/status');
-            if (res.ok) {
-                const data = await res.json();
-                this.isAuthenticated = data.authenticated;
-            } else {
-                this.isAuthenticated = false;
-            }
-        } catch (e) {
-            console.error('[AUTH] Failed to check status:', e);
-            this.isAuthenticated = false;
-        }
-        return this.isAuthenticated;
-    },
-    handleUnauthorized() {
-        console.warn('[AUTH] Session expired or unauthorized. Stopping polling and redirecting to login...');
-        this.isAuthenticated = false;
-        isPolling = false;
-        if (currentPollTimeout) clearTimeout(currentPollTimeout);
-        window.location.href = '/login';
-    }
-};
-
-// =======================
 // POLLING SYSTEM
 // =======================
 let pollingInterval = null;
@@ -112,20 +83,11 @@ function updateConnectionIndicator(isOnline) {
 // Polling replaces Socket Events
 async function pollLatestData() {
     if (window.isManualSession) return;
-    if (!AuthManager.isAuthenticated) {
-        console.log('[POLL] Skipped: User not authenticated');
-        return;
-    }
     if (isPolling) return;
     isPolling = true;
 
     try {
         const response = await fetch('/api/latest-data');
-
-        if (response.status === 401) {
-            AuthManager.handleUnauthorized();
-            return;
-        }
 
         if (!response.ok) throw new Error('Polling failed');
         const data = await response.json();
@@ -227,8 +189,6 @@ function getSecondsUntilNextHunt() {
 }
 
 async function adaptivePoll() {
-    if (!AuthManager.isAuthenticated) return;
-
     // Perform the actual fetch
     await pollLatestData();
 
@@ -2211,34 +2171,24 @@ document.addEventListener('DOMContentLoaded', function () {
     // 7. Sync System Fetch Status and trigger first poll
     console.log('[INIT] Syncing system fetch status with server...');
 
-    // Validasi Auth Status sebelum memulai polling
-    AuthManager.init().then(isAuthenticated => {
-        if (!isAuthenticated) {
-            console.warn('[INIT] User not authenticated, polling will not start.');
-            return;
-        }
-
-        fetch("/api/set_fetch", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ enabled: autoFetchEnabled })
+    fetch("/api/set_fetch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: autoFetchEnabled })
+    })
+        .then(response => {
+            if (!response.ok) throw new Error('Fetch status sync failed');
+            return response.json();
         })
-            .then(r => {
-                if (r.status === 401) throw new Error('Unauthorized');
-                return r.json();
-            })
-            .then(data => {
-                updateStatusPanel(data);
-                console.log('[INIT] Server fetch status synced:', data.auto_fetch);
-                // Start adaptive polling
-                if (typeof adaptivePoll === 'function') setTimeout(adaptivePoll, 1000);
-            })
-            .catch(err => {
-                console.error('[INIT] Failed to sync fetch status:', err);
-                if (err.message === 'Unauthorized') AuthManager.handleUnauthorized();
-                else if (typeof adaptivePoll === 'function') setTimeout(adaptivePoll, 1000); // Fallback to poll anyway
-            });
-    });
+        .then(data => {
+            updateStatusPanel(data);
+            console.log('[INIT] Server fetch status synced:', data.auto_fetch);
+            if (typeof adaptivePoll === 'function') setTimeout(adaptivePoll, 1000);
+        })
+        .catch(error => {
+            console.error('[INIT] Failed to sync fetch status:', error);
+            if (typeof adaptivePoll === 'function') setTimeout(adaptivePoll, 1000);
+        });
 
     // Initial poll will handle first load
     // setInterval(fetchMetar, 60000); // 🗑️ REMOVED REDUNDANT LOOP
@@ -3163,10 +3113,6 @@ window.filterReportType = filterReportType;
         try {
             const response = await fetch('/api/ews-status', { headers: { Accept: 'application/json' } });
             const data = await response.json();
-            if (response.status === 401) {
-                window.location.href = '/login';
-                return;
-            }
             if (!response.ok) throw new Error(data.error || 'Data EWS belum tersedia.');
 
             const danger = data.status === 'BAHAYA';
