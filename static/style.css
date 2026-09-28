@@ -110,6 +110,63 @@
   font-weight: 500;
 }
 
+.ews-panel {
+  border-top: 4px solid #0284c7;
+}
+
+.ews-header-flex {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.ews-title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ews-card-subtitle {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.ews-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ews-collapse-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 5px 12px;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.ews-collapse-btn:hover {
+  background: var(--bg-surface-alt);
+  transform: translateY(-1px);
+}
+
+.ews-collapsible-content {
+  transition: opacity 0.25s ease;
+}
+
+.ews-collapsible-content.collapsed {
+  display: none !important;
+}
+
 .ews-overview {
   grid-template-columns: 1fr;
   align-items: center;

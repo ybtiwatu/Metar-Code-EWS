@@ -3192,6 +3192,30 @@ window.filterReportType = filterReportType;
         }
     }
 
+    function toggleEwsPanel() {
+        const content = document.getElementById('ewsCollapsibleContent');
+        const btn = document.getElementById('ewsCollapseBtn');
+        const icon = btn ? btn.querySelector('.ews-collapse-icon') : null;
+        const text = btn ? btn.querySelector('.ews-collapse-text') : null;
+        if (!content) return;
+
+        const isCollapsed = content.classList.toggle('collapsed');
+        if (btn) {
+            btn.setAttribute('aria-expanded', !isCollapsed);
+            if (icon) icon.textContent = isCollapsed ? '▼' : '▲';
+            if (text) text.textContent = isCollapsed ? 'Buka Analisis' : 'Ciutkan';
+        }
+
+        if (!isCollapsed && typeof charts !== 'undefined') {
+            setTimeout(() => {
+                ['ewsWindChart', 'ewsQnhChart', 'ewsContributionChart'].forEach(id => {
+                    if (charts[id] && charts[id].resize) charts[id].resize();
+                });
+            }, 60);
+        }
+    }
+    window.toggleEwsPanel = toggleEwsPanel;
+
     function openEwsLogModal() {
         const modal = document.getElementById('ewsLogModal');
         const overlay = document.getElementById('ewsLogModalOverlay');
