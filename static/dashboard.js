@@ -3111,3 +3111,83 @@ document.addEventListener('DOMContentLoaded', function() {
 // Expose globally
 window.filterReportType = filterReportType;
 
+// Early Warning System summary and short-term trend charts.
+(() => {
+    const charts = {};
+
+    function regressionLine(values) {
+        const valid = values.map((value, index) => ({ value: Number(value), index }))
+            .filter(point => Number.isFinite(point.value));
+        if (valid.length < 2) return values.map(() => null);
+
+        const meanX = valid.reduce((sum, point) => sum + point.index, 0) / valid.length;
+        const meanY = valid.reduce((sum, point) => sum + point.value, 0) / valid.length;
+        const denominator = valid.reduce((sum, point) => sum + (point.index - meanX) ** 2, 0);
+        const slope = denominator ? valid.reduce((sum, point) =>
+            sum + (point.index - meanX) * (point.value - meanY), 0) / denominator : 0;
+        return values.map((_, index) => meanY + slope * (index - meanX));
+    }
+
+    function drawEwsChart(canvasId, rows, key, label, color) {
+        const canvas = document.getElementById(canvasId);
+        if (!canvas || typeof Chart === 'undefined') return;
+
+        const values = rows.map(row => row[key] === null ? null : Number(row[key]));
+        const labels = rows.map(row => {
+            const timestamp = String(row.time || '');
+            const match = timestamp.match(/(?:T|\s)(\d{1,2}:\d{2})/);
+            return match ? match[1] : timestamp;
+        });
+        if (charts[canvasId]) charts[canvasId].destroy();
+        charts[canvasId] = new Chart(canvas, {
+            type: 'line',
+            data: { labels, datasets: [
+                { label, data: values, borderColor: color, backgroundColor: color + '22',
+                    pointRadius: 3, pointHoverRadius: 5, tension: 0.25, spanGaps: true },
+                { label: 'Regresi linear', data: regressionLine(values), borderColor: '#d97706',
+                    borderDash: [5, 4], pointRadius: 0, borderWidth: 2, spanGaps: true }
+            ] },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: { legend: { position: 'bottom' } },
+                scales: { y: { beginAtZero: false } }
+            }
+        });
+    }
+
+    async function loadEwsStatus() {
+        const panel = document.getElementById('ewsPanel');
+        if (!panel) return;
+        const updated = document.getElementById('ewsUpdated');
+        try {
+            const response = await fetch('/api/ews-status', { headers: { Accept: 'application/json' } });
+            const data = await response.json();
+            if (response.status === 401) {
+                window.location.href = '/login';
+                return;
+            }
+            if (!response.ok) throw new Error(data.error || 'Data EWS belum tersedia.');
+
+            const danger = data.status === 'BAHAYA';
+            const indicator = document.getElementById('ewsIndicator');
+            indicator.dataset.state = danger ? 'danger' : 'safe';
+            document.getElementById('ewsStatus').textContent = data.status;
+            document.getElementById('ewsConfidence').textContent = `${data.confidence_percent}%`;
+            document.getElementById('ewsDescription').textContent = data.deskripsi;
+            document.getElementById('ewsMetar').textContent = `METAR terbaru: ${data.metar_terbaru}`;
+            drawEwsChart('ewsWindChart', data.history, 'wind_speed_kt', 'Kecepatan angin', '#0f766e');
+            drawEwsChart('ewsQnhChart', data.history, 'qnh_hpa', 'QNH', '#2563a6');
+            updated.textContent = `Diperbarui ${new Date().toLocaleTimeString('id-ID')}`;
+        } catch (error) {
+            document.getElementById('ewsIndicator').dataset.state = 'error';
+            document.getElementById('ewsStatus').textContent = 'TIDAK TERSEDIA';
+            document.getElementById('ewsConfidence').textContent = '--%';
+            document.getElementById('ewsDescription').textContent = error.message;
+            updated.textContent = 'Gagal memperbarui';
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', loadEwsStatus);
+})();
+

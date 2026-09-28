@@ -4,6 +4,14 @@
 
 {% block nav_active_dashboard %}active{% endblock %}
 
+{% block head %}
+<script>
+    window.tailwind = window.tailwind || {};
+    window.tailwind.config = { corePlugins: { preflight: false } };
+</script>
+<script src="https://cdn.tailwindcss.com"></script>
+{% endblock %}
+
 {% block content %}
 <!-- Alert Banner -->
 <div class="alert-banner" id="alertBanner">
@@ -12,6 +20,35 @@
     <span id="alertMessage"></span>
     <button class="alert-dismiss" onclick="dismissAlert()">Acknowledge</button>
 </div>
+
+<section class="card ews-panel fade-in" id="ewsPanel" aria-live="polite">
+    <div class="card-header">
+        <h3 class="card-title"><span class="icon">⛈️</span> Early Warning System</h3>
+        <span class="ews-updated" id="ewsUpdated">Mengambil data...</span>
+    </div>
+    <div class="ews-overview grid grid-cols-1 gap-4 md:grid-cols-[minmax(145px,0.7fr)_2fr]">
+        <div class="ews-indicator" id="ewsIndicator" data-state="loading">
+            <span class="ews-status-label" id="ewsStatus">MEMUAT</span>
+            <span class="ews-confidence" id="ewsConfidence">--%</span>
+            <span class="ews-confidence-caption">keyakinan model</span>
+        </div>
+        <div class="ews-narrative">
+            <h4>Potensi cuaca</h4>
+            <p id="ewsDescription">Mengambil prediksi dari empat observasi METAR terakhir.</p>
+            <span class="ews-metar" id="ewsMetar">METAR terbaru: menunggu data</span>
+        </div>
+    </div>
+    <div class="ews-charts grid grid-cols-1 gap-6 md:grid-cols-2">
+        <div class="ews-chart">
+            <h4>Kecepatan angin <span>(kt)</span></h4>
+            <div class="ews-chart-frame"><canvas id="ewsWindChart" aria-label="Tren angin dan regresi"></canvas></div>
+        </div>
+        <div class="ews-chart">
+            <h4>Tekanan QNH <span>(hPa)</span></h4>
+            <div class="ews-chart-frame"><canvas id="ewsQnhChart" aria-label="Tren QNH dan regresi"></canvas></div>
+        </div>
+    </div>
+</section>
 
 <!-- System Status Panel -->
 <div class="card system-status-card fade-in" style="animation-delay:0.03s">

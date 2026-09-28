@@ -7,6 +7,7 @@ import os
 import math
 import re
 import io   
+import pickle
 from datetime import datetime
 from datetime import timedelta
 from io import BytesIO
@@ -1198,6 +1199,136 @@ def extract_pressure(metar):
     return 0
 
 # API endpoints consolidated below (see get_history_api)
+
+# EWS assets are loaded lazily so other dashboard routes remain usable if the
+# model files are not available in a deployment environment.
+_ews_model = None
+_ews_feature_order = None
+
+
+def _load_ews_assets():
+    global _ews_model, _ews_feature_order
+    if _ews_model is None or _ews_feature_order is None:
+        model_path = os.path.join(project_root, "model_ews_metar.pkl")
+        feature_path = os.path.join(project_root, "urutan_fitur.pkl")
+        with open(model_path, "rb") as model_file:
+            _ews_model = pickle.load(model_file)
+        with open(feature_path, "rb") as feature_file:
+            _ews_feature_order = list(pickle.load(feature_file))
+    return _ews_model, _ews_feature_order
+
+
+def _parse_ews_metar(raw_metar):
+    from metar import Metar
+
+    observation = Metar.Metar(str(raw_metar).strip().rstrip("="))
+
+    def value(field, units=None):
+        if field is None:
+            return float("nan")
+        try:
+            result = field.value() if units is None else field.value(units=units)
+            return float(result) if result is not None else float("nan")
+        except (AttributeError, TypeError, ValueError):
+            return float("nan")
+
+    weather_codes = " ".join(str(item) for item in (observation.weather or []))
+    raw_upper = str(raw_metar).upper()
+    thunderstorm = bool(re.search(r"(?:^|\s)(?:VCTS|[+-]?TS(?:RA|SN|GR|GS)?)(?:\s|$)", raw_upper))
+
+    return {
+        "arah_angin_deg": value(observation.wind_dir),
+        "kec_angin_kt": value(observation.wind_speed, "KT"),
+        "visibilitas_m": value(observation.vis, "M"),
+        "suhu_c": value(observation.temp, "C"),
+        "dew_point_c": value(observation.dewpt, "C"),
+        "qnh_hpa": value(observation.press, "HPA"),
+        "status_cuaca_sekarang": int(thunderstorm or "TS" in weather_codes),
+    }
+
+
+@app.route("/api/ews-status")
+@admin_only_api
+def api_ews_status():
+    """Predict thunderstorm risk using the latest four METAR observations."""
+    try:
+        recent_rows = sheets_handler.get_recent_data(limit=4, bypass_cache=True)
+        if len(recent_rows) < 4:
+            return jsonify({"error": "Diperlukan minimal 4 baris METAR dari Google Sheets."}), 503
+
+        observations = []
+        for row in recent_rows:
+            raw_metar = row.get("metar")
+            if not raw_metar:
+                continue
+            values = _parse_ews_metar(raw_metar)
+            values["time"] = str(row.get("time", ""))
+            values["metar"] = str(raw_metar)
+            observations.append(values)
+
+        if len(observations) < 4:
+            return jsonify({"error": "Empat baris METAR valid diperlukan untuk membentuk fitur lag."}), 503
+
+        current = observations[-1]
+        feature_values = {
+            "arah_angin_deg": current["arah_angin_deg"],
+            "kec_angin_kt": current["kec_angin_kt"],
+            "visibilitas_m": current["visibilitas_m"],
+            "suhu_c": current["suhu_c"],
+            "dew_point_c": current["dew_point_c"],
+            "qnh_hpa": current["qnh_hpa"],
+            "status_cuaca_sekarang": current["status_cuaca_sekarang"],
+        }
+        lag_feature_sources = {
+            "suhu_c": "suhu_c",
+            "qnh_hpa": "qnh_hpa",
+            "kec_angin_kt": "kec_angin_kt",
+            "dew_point_c": "dew_point_c",
+        }
+        for lag in range(1, 4):
+            previous = observations[-lag - 1]
+            for feature_name, observation_key in lag_feature_sources.items():
+                feature_values[f"{feature_name}_lag_{lag}"] = previous[observation_key]
+
+        model, feature_order = _load_ews_assets()
+        missing_features = [name for name in feature_order if name not in feature_values]
+        if missing_features:
+            raise ValueError(f"Fitur model belum dipetakan: {', '.join(missing_features)}")
+
+        feature_frame = pd.DataFrame(
+            [[feature_values[name] for name in feature_order]],
+            columns=feature_order,
+        )
+        probabilities = model.predict_proba(feature_frame)[0]
+        class_index = list(model.classes_).index(1)
+        danger_probability = float(probabilities[class_index])
+        prediction = model.predict(feature_frame)[0]
+        is_danger = int(prediction) == 1
+        confidence = danger_probability if is_danger else 1 - danger_probability
+
+        history = [{
+            "time": item["time"],
+            "wind_speed_kt": None if pd.isna(item["kec_angin_kt"]) else item["kec_angin_kt"],
+            "qnh_hpa": None if pd.isna(item["qnh_hpa"]) else item["qnh_hpa"],
+        } for item in observations]
+        status = "BAHAYA" if is_danger else "AMAN"
+        description = (
+            "Model mendeteksi potensi badai guntur. Tingkatkan kewaspadaan dan pantau pembaruan METAR berikutnya."
+            if is_danger else
+            "Model tidak mendeteksi potensi badai guntur pada observasi ini. Tetap pantau perubahan cuaca."
+        )
+
+        return jsonify({
+            "status": status,
+            "probabilitas_bahaya": round(danger_probability * 100, 2),
+            "confidence_percent": round(confidence * 100, 2),
+            "deskripsi": description,
+            "metar_terbaru": current["metar"],
+            "history": history,
+        })
+    except Exception as error:
+        print(f"[EWS] Prediction failed: {error}", file=sys.stderr)
+        return jsonify({"error": "Prediksi EWS gagal. Periksa kredensial Sheets, model, dan format METAR."}), 503
 
 
 @app.route("/api/metar/<station_code>")

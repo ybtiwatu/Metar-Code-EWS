@@ -97,6 +97,105 @@
 /* ============================================= */
 /* RESET & BASE                                  */
 /* ============================================= */
+
+.ews-panel {
+  border-top: 4px solid var(--color-primary);
+}
+
+.ews-updated,
+.ews-confidence-caption,
+.ews-chart h4 span {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
+.ews-overview {
+  grid-template-columns: 1fr;
+  align-items: center;
+  padding: var(--space-md) 0 var(--space-lg);
+}
+
+.ews-indicator {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  padding: 18px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  background: var(--bg-surface-alt);
+}
+
+.ews-indicator[data-state="safe"] {
+  border-color: #86efac;
+  color: #166534;
+  background: #f0fdf4;
+}
+
+.ews-indicator[data-state="danger"] {
+  border-color: #fca5a5;
+  color: #991b1b;
+  background: #fef2f2;
+  animation: ews-danger-pulse 1.6s ease-in-out infinite;
+}
+
+.ews-indicator[data-state="error"] {
+  border-color: var(--border-color);
+}
+
+.ews-status-label {
+  font-size: 1.3rem;
+  font-weight: 800;
+}
+
+.ews-confidence {
+  font-size: 1.8rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.ews-narrative h4,
+.ews-chart h4 {
+  margin: 0 0 8px;
+  color: var(--text-primary);
+  font-size: 0.98rem;
+}
+
+.ews-narrative p {
+  margin: 0 0 10px;
+  color: var(--text-secondary);
+  line-height: 1.55;
+}
+
+.ews-metar {
+  display: block;
+  overflow-wrap: anywhere;
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.78rem;
+}
+
+.ews-charts {
+  grid-template-columns: 1fr;
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--border-color);
+}
+
+.ews-chart-frame {
+  position: relative;
+  height: 230px;
+}
+
+@keyframes ews-danger-pulse {
+  50% { box-shadow: 0 0 0 5px rgba(220, 38, 38, 0.12); }
+}
+
+@media (max-width: 700px) {
+  .ews-overview { gap: var(--space-md); }
+  .ews-chart-frame { height: 210px; }
+}
+
 html {
   height: 100%;
 }
