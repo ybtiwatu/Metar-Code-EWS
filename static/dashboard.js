@@ -937,6 +937,10 @@ function handleMetarUpdate(data) {
                 htmlStr += ' <span class="badge" style="background-color: #ef4444; color: #ffffff; margin-left: 10px; font-size: 0.75rem; padding: 4px 8px; vertical-align: middle;">⚠️ SPECI</span>';
             }
             rawEl.innerHTML = htmlStr;
+            const snippetEl = document.getElementById('metarRawSnippet');
+            if (snippetEl) {
+                snippetEl.textContent = displayRaw;
+            }
         }
 
         // Update panel status color
@@ -3536,6 +3540,24 @@ window.filterReportType = filterReportType;
         }
     }
     window.toggleLstmPanel = toggleLstmPanel;
+
+    function toggleRawMetar() {
+        const panel = document.getElementById('metarRawPanel');
+        const content = document.getElementById('metarRawCollapsibleContent');
+        const btn = document.getElementById('metarRawCollapseBtn');
+        const icon = btn ? btn.querySelector('.metar-raw-collapse-icon') : null;
+        const text = btn ? btn.querySelector('.metar-raw-collapse-text') : null;
+        if (!content) return;
+
+        const isCollapsed = content.classList.toggle('collapsed');
+        if (panel) panel.classList.toggle('collapsed', isCollapsed);
+        if (btn) {
+            btn.setAttribute('aria-expanded', !isCollapsed);
+            if (icon) icon.textContent = isCollapsed ? '▼' : '▲';
+            if (text) text.textContent = isCollapsed ? 'Buka Raw Data' : 'Ciutkan';
+        }
+    }
+    window.toggleRawMetar = toggleRawMetar;
 
     document.addEventListener('DOMContentLoaded', () => {
         loadEwsStatus();

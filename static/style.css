@@ -1157,32 +1157,84 @@ button.sidebar-link {
 /* ============================================= */
 
 .metar-hero {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
   margin-bottom: var(--space-lg);
 }
 
-/* Raw METAR Panel */
+/* Raw METAR Panel (Collapsible) */
 .metar-raw-panel {
   background: var(--bg-surface);
   border: 1px solid var(--border-color);
   border-left: 4px solid var(--color-accent);
   border-radius: var(--radius-lg);
-  padding: var(--space-xl);
+  padding: 14px 20px;
   box-shadow: var(--shadow-sm);
+  transition: all 0.25s ease;
 }
 
-.metar-raw-panel .panel-title {
+.metar-raw-header {
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.metar-raw-header .panel-title {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
   font-weight: 700;
-  font-size: 0.9rem;
+  font-size: 0.88rem;
   color: var(--text-secondary);
-  margin-bottom: var(--space-md);
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  flex: 1;
+  min-width: 0;
+}
+
+.metar-raw-snippet {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  background: var(--bg-body);
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color-light);
+  max-width: 500px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.metar-raw-collapse-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 5px 12px;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.metar-raw-collapse-btn:hover {
+  background: var(--bg-surface-alt);
+  transform: translateY(-1px);
+}
+
+.metar-raw-collapsible-content {
+  margin-top: 14px;
+  transition: opacity 0.25s ease;
+}
+
+.metar-raw-collapsible-content.collapsed {
+  display: none !important;
 }
 
 .metar-raw-code {
@@ -1330,8 +1382,20 @@ button.sidebar-link {
 /* Decoded Parameters Panel */
 .metar-decoded-panel {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(4, 1fr);
   gap: var(--space-md);
+}
+
+@media (max-width: 1024px) {
+  .metar-decoded-panel {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 580px) {
+  .metar-decoded-panel {
+    grid-template-columns: 1fr;
+  }
 }
 
 .param-card {
@@ -1438,11 +1502,49 @@ button.sidebar-link {
   gap: var(--space-lg);
 }
 
+/* System Status Header & Actions */
+.system-status-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.system-status-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.station-status-value {
+  color: var(--color-primary, #0d9488);
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 800;
+}
+
+[data-theme="dark"] .station-status-value {
+  color: #38bdf8;
+}
+
 /* System Status Grid */
 .status-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: var(--space-md);
+}
+
+@media (max-width: 900px) {
+  .status-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 500px) {
+  .status-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .status-item {

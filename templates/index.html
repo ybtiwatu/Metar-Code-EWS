@@ -21,108 +21,24 @@
     <button class="alert-dismiss" onclick="dismissAlert()">Acknowledge</button>
 </div>
 
-<section class="card ews-panel fade-in" id="ewsPanel" aria-live="polite">
-    <div class="card-header ews-header-flex">
-        <div class="ews-title-group">
-            <h3 class="card-title"><span class="icon">🔬</span> Analisis Prediktif Cuaca Ekstrem (XGBoost)</h3>
-            <p class="ews-card-subtitle">Gradient Boosted Decision Trees & Shapley Additive Explanations (TreeSHAP)</p>
+<!-- System Status & Station Action Bar -->
+<div class="card system-status-card fade-in" style="animation-delay:0.02s">
+    <div class="card-header system-status-header">
+        <h3 class="card-title" style="font-size: 1.05rem; margin: 0;"><span class="icon">🖥️</span> System Status</h3>
+        <div class="system-status-actions">
+            <form method="POST" style="margin: 0; display: inline-flex;">
+                <input type="hidden" name="icao" id="icaoInput" value="{{ station or 'WARR' }}">
+                <button type="submit" class="btn btn-sm btn-primary" style="height: 34px;" title="Muat ulang METAR stasiun WARR">⚡ Load METAR</button>
+            </form>
+            <a href="/download_csv" class="btn btn-sm btn-outline" style="height: 34px; display: inline-flex; align-items: center;">📥 Download CSV</a>
+            <button class="btn btn-sm btn-outline" onclick="toggleSystem()" id="toggleSystemBtn" style="height: 34px;">⏻ Toggle System</button>
         </div>
-        <div class="ews-header-actions">
-            <span class="ews-updated" id="ewsUpdated">Mengambil data...</span>
-            <button type="button" class="btn btn-sm btn-outline ews-refresh-btn" id="ewsRefreshBtn" onclick="loadEwsStatus()" title="Muat ulang analisis">↻</button>
-            <button type="button" class="btn btn-sm btn-outline ews-collapse-btn" id="ewsCollapseBtn" onclick="toggleEwsPanel()" aria-expanded="true" title="Ciutkan / Buka Analisis">
-                <span class="ews-collapse-icon">▲</span>
-                <span class="ews-collapse-text">Ciutkan</span>
-            </button>
-        </div>
-    </div>
-    <div class="ews-collapsible-content" id="ewsCollapsibleContent">
-        <div class="ews-overview grid grid-cols-1 gap-4 md:grid-cols-[minmax(145px,0.7fr)_2fr]">
-            <div class="ews-indicator" id="ewsIndicator" data-state="loading">
-                <span class="ews-status-label" id="ewsStatus">MEMUAT</span>
-                <span class="ews-confidence" id="ewsConfidence">--%</span>
-                <span class="ews-confidence-caption">keyakinan model</span>
-            </div>
-            <div class="ews-narrative">
-                <h4>Potensi cuaca</h4>
-                <p id="ewsDescription">Mengambil prediksi dari empat observasi METAR terakhir.</p>
-                <span class="ews-metar" id="ewsMetar">METAR terbaru: menunggu data</span>
-            </div>
-        </div>
-        <div class="ews-charts grid grid-cols-1 gap-6 md:grid-cols-2">
-            <div class="ews-chart">
-                <h4>Kecepatan angin <span>(kt)</span></h4>
-                <div class="ews-chart-frame"><canvas id="ewsWindChart" aria-label="Tren angin dan regresi"></canvas></div>
-            </div>
-            <div class="ews-chart">
-                <h4>Tekanan QNH <span>(hPa)</span></h4>
-                <div class="ews-chart-frame"><canvas id="ewsQnhChart" aria-label="Tren QNH dan regresi"></canvas></div>
-            </div>
-            <div class="ews-chart ews-explanation-chart">
-                <h4>Kontribusi fitur model <span>(TreeSHAP, log-odds)</span></h4>
-                <p class="ews-chart-note">Nilai positif mendorong prediksi ke BAHAYA; nilai negatif menurunkan skor risiko. Ditampilkan 10 fitur teratas.</p>
-                <div class="ews-contribution-frame"><canvas id="ewsContributionChart" aria-label="Kontribusi TreeSHAP fitur cuaca"></canvas></div>
-            </div>
-        </div>
-    </div>
-</section>
-
-<section class="card lstm-panel fade-in" id="lstmPanel" aria-live="polite">
-    <div class="card-header">
-        <div>
-            <h3 class="card-title"><span class="icon">🔭</span> Forecast Cuaca LSTM</h3>
-            <p class="lstm-subtitle">Prediksi cuaca multi-langkah (+30 menit dan +1 jam) dari 10 observasi METAR terakhir</p>
-        </div>
-        <div class="lstm-header-actions">
-            <span class="lstm-state" id="lstmState" data-state="loading">MENUNGGU</span>
-            <button class="btn btn-sm btn-outline lstm-refresh-btn" id="lstmRefresh" type="button" title="Muat ulang prediksi">↻</button>
-            <button type="button" class="btn btn-sm btn-outline lstm-collapse-btn" id="lstmCollapseBtn" onclick="toggleLstmPanel()" aria-expanded="true" title="Ciutkan / Buka Prediksi">
-                <span class="lstm-collapse-icon">▲</span>
-                <span class="lstm-collapse-text">Ciutkan</span>
-            </button>
-        </div>
-    </div>
-    <div class="lstm-collapsible-content" id="lstmCollapsibleContent">
-        <div class="lstm-error hidden" id="lstmError" role="status"></div>
-        <div class="lstm-forecast-meta">
-            <span>Observasi terakhir <strong id="lstmActualTime">--</strong></span>
-            <span>Prediksi +30 menit <strong id="lstmForecastTime30m">--</strong></span>
-            <span>Prediksi +1 jam <strong id="lstmForecastTime1h">--</strong></span>
-            <strong id="lstmForecastTime" style="display:none">--</strong>
-        </div>
-        <div class="table-responsive lstm-metrics-wrap">
-            <table class="data-table modern-table lstm-metrics-table">
-                <thead>
-                    <tr>
-                        <th>Parameter</th>
-                        <th>Aktual</th>
-                        <th>Prediksi +30 Menit</th>
-                        <th>Prediksi +1 Jam</th>
-                        <th>Perubahan (+1j)</th>
-                    </tr>
-                </thead>
-                <tbody id="lstmMetrics">
-                    <tr><td colspan="5">Menunggu layanan LSTM...</td></tr>
-                </tbody>
-            </table>
-        </div>
-        <div class="lstm-charts">
-            <div class="lstm-chart-item"><h4>Suhu <span>(C)</span></h4><div class="lstm-chart-frame"><canvas id="lstmTempChart" aria-label="Suhu aktual dan prediksi"></canvas></div></div>
-            <div class="lstm-chart-item"><h4>Tekanan QNH <span>(hPa)</span></h4><div class="lstm-chart-frame"><canvas id="lstmQnhChart" aria-label="QNH aktual dan prediksi"></canvas></div></div>
-            <div class="lstm-chart-item"><h4>Kecepatan angin <span>(kt)</span></h4><div class="lstm-chart-frame"><canvas id="lstmWindChart" aria-label="Angin aktual dan prediksi"></canvas></div></div>
-            <div class="lstm-chart-item"><h4>Titik embun <span>(C)</span></h4><div class="lstm-chart-frame"><canvas id="lstmDewChart" aria-label="Titik embun aktual dan prediksi"></canvas></div></div>
-        </div>
-    </div>
-</section>
-
-<!-- System Status Panel -->
-<div class="card system-status-card fade-in" style="animation-delay:0.03s">
-    <div class="card-header">
-        <h3 class="card-title" style="font-size: 1.1rem;"><span class="icon">🖥️</span> System Status</h3>
-        <button class="btn btn-sm btn-outline" onclick="toggleSystem()" id="toggleSystemBtn">⏻ Toggle
-            System</button>
     </div>
     <div class="status-grid">
+        <div class="status-item">
+            <span class="status-label">STASIUN UTAMA</span>
+            <span class="status-value station-status-value" id="station-badge-val">WARR · Juanda</span>
+        </div>
         <div class="status-item">
             <span class="status-label">SERVER</span>
             <span class="status-value status-online" id="server-status">ONLINE 🟢</span>
@@ -143,50 +59,51 @@
     </div>
 </div>
 
-<!-- Station Input Form -->
-<div class="card fade-in" style="animation-delay:0.05s">
-    <form method="POST" class="form-row">
-        <div class="form-group" style="max-width:200px">
-            <label for="icaoInput">ICAO Station</label>
-            <input type="text" name="icao" id="icaoInput" value="{{ station }}" class="form-input" placeholder="WARR">
-        </div>
-        <button type="submit" class="btn btn-primary" style="height:42px">⚡ Load METAR</button>
-        <a href="/download_csv" class="btn btn-outline" style="height:42px">📥 Download CSV</a>
-    </form>
-</div>
-
 <!-- ========== METAR HERO SECTION ========== -->
 {% if latest %}
-<div class="metar-hero fade-in" style="animation-delay:0.1s">
+<div class="metar-hero fade-in" id="metarHero" style="animation-delay:0.04s">
 
-    <!-- Raw METAR Panel -->
-    <div class="metar-raw-panel {% if latest.status == 'danger' %}status-danger{% elif latest.status == 'warning' %}status-warning{% endif %}"
+    <!-- Raw METAR Panel (Collapsible, Initially Closed) -->
+    <div class="metar-raw-panel collapsed {% if latest.status == 'danger' %}status-danger{% elif latest.status == 'warning' %}status-warning{% endif %}"
         id="metarRawPanel">
-        <div class="panel-title">📡 RAW METAR DATA</div>
-        <div class="metar-raw-code" id="metarRawCode">
-            {{ latest.metar.strip() if latest.metar.strip().endswith('=') else latest.metar.strip() + '=' }}
-            {% if latest.report_type == 'COR' or 'COR' in latest.metar or 'CCA' in latest.metar %}
-            <span class="badge"
-                style="background-color: #f59e0b; color: #1e293b; margin-left: 10px; font-size: 0.75rem; padding: 4px 8px; vertical-align: middle;">⚠️
-                COR</span>
-            {% elif latest.report_type == 'AMD' or 'AMD' in latest.metar %}
-            <span class="badge"
-                style="background-color: #3b82f6; color: #ffffff; margin-left: 10px; font-size: 0.75rem; padding: 4px 8px; vertical-align: middle;">⚠️
-                AMD</span>
-            {% elif latest.report_type == 'SPECI' or 'SPECI' in latest.metar %}
-            <span class="badge"
-                style="background-color: #ef4444; color: #ffffff; margin-left: 10px; font-size: 0.75rem; padding: 4px 8px; vertical-align: middle;">⚠️
-                SPECI</span>
-            {% endif %}
+        <div class="metar-raw-header">
+            <div class="panel-title">
+                <span>📡 RAW METAR DATA</span>
+                <span class="metar-raw-snippet" id="metarRawSnippet" title="{{ latest.metar.strip() }}">
+                    {{ latest.metar.strip() if latest.metar.strip().endswith('=') else latest.metar.strip() + '=' }}
+                </span>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline metar-raw-collapse-btn" id="metarRawCollapseBtn" onclick="toggleRawMetar()" aria-expanded="false" title="Buka / Ciutkan Raw METAR">
+                <span class="metar-raw-collapse-icon">▼</span>
+                <span class="metar-raw-collapse-text">Buka Raw Data</span>
+            </button>
         </div>
-        <div class="metar-actions">
-            <button class="btn btn-sm btn-outline" onclick="copyMetar()">📋 Copy</button>
-            <button class="btn btn-sm btn-outline" onclick="location.reload()">🔄 Refresh</button>
-            <span class="copy-feedback" id="metarCopyFeedback">Copied!</span>
-        </div>
-        <!-- Validation Display -->
-        <div id="metarValidation" style="margin-top: 12px; font-size: 0.85rem; font-family: 'Inter', sans-serif;">
-            <!-- Populated by dashboard.js -->
+        <div class="metar-raw-collapsible-content collapsed" id="metarRawCollapsibleContent" style="display: none;">
+            <div class="metar-raw-code" id="metarRawCode">
+                {{ latest.metar.strip() if latest.metar.strip().endswith('=') else latest.metar.strip() + '=' }}
+                {% if latest.report_type == 'COR' or 'COR' in latest.metar or 'CCA' in latest.metar %}
+                <span class="badge"
+                    style="background-color: #f59e0b; color: #1e293b; margin-left: 10px; font-size: 0.75rem; padding: 4px 8px; vertical-align: middle;">⚠️
+                    COR</span>
+                {% elif latest.report_type == 'AMD' or 'AMD' in latest.metar %}
+                <span class="badge"
+                    style="background-color: #3b82f6; color: #ffffff; margin-left: 10px; font-size: 0.75rem; padding: 4px 8px; vertical-align: middle;">⚠️
+                    AMD</span>
+                {% elif latest.report_type == 'SPECI' or 'SPECI' in latest.metar %}
+                <span class="badge"
+                    style="background-color: #ef4444; color: #ffffff; margin-left: 10px; font-size: 0.75rem; padding: 4px 8px; vertical-align: middle;">⚠️
+                    SPECI</span>
+                {% endif %}
+            </div>
+            <div class="metar-actions">
+                <button class="btn btn-sm btn-outline" onclick="copyMetar()">📋 Copy</button>
+                <button class="btn btn-sm btn-outline" onclick="location.reload()">🔄 Refresh</button>
+                <span class="copy-feedback" id="metarCopyFeedback">Copied!</span>
+            </div>
+            <!-- Validation Display -->
+            <div id="metarValidation" style="margin-top: 12px; font-size: 0.85rem; font-family: 'Inter', sans-serif;">
+                <!-- Populated by dashboard.js -->
+            </div>
         </div>
     </div>
 
@@ -238,13 +155,107 @@
 </div>
 {% endif %}
 
-<div class="card fade-in" style="animation-delay:0.14s">
+<div class="card fade-in" style="animation-delay:0.06s">
     <div class="card-header">
         <h3 class="card-title"><span class="icon">📝</span> Narasi Cuaca</h3>
     </div>
     <div class="narrative-display" id="narrativeDisplay">{% if narrative %}{{ narrative }}{% else %}Waiting for data
         update...{% endif %}</div>
 </div>
+
+<section class="card ews-panel fade-in" id="ewsPanel" aria-live="polite" style="animation-delay:0.08s">
+    <div class="card-header ews-header-flex">
+        <div class="ews-title-group">
+            <h3 class="card-title"><span class="icon">🔬</span> Analisis Prediktif Cuaca Ekstrem (XGBoost)</h3>
+            <p class="ews-card-subtitle">Gradient Boosted Decision Trees & Shapley Additive Explanations (TreeSHAP)</p>
+        </div>
+        <div class="ews-header-actions">
+            <span class="ews-updated" id="ewsUpdated">Mengambil data...</span>
+            <button type="button" class="btn btn-sm btn-outline ews-refresh-btn" id="ewsRefreshBtn" onclick="loadEwsStatus()" title="Muat ulang analisis">↻</button>
+            <button type="button" class="btn btn-sm btn-outline ews-collapse-btn" id="ewsCollapseBtn" onclick="toggleEwsPanel()" aria-expanded="true" title="Ciutkan / Buka Analisis">
+                <span class="ews-collapse-icon">▲</span>
+                <span class="ews-collapse-text">Ciutkan</span>
+            </button>
+        </div>
+    </div>
+    <div class="ews-collapsible-content" id="ewsCollapsibleContent">
+        <div class="ews-overview grid grid-cols-1 gap-4 md:grid-cols-[minmax(145px,0.7fr)_2fr]">
+            <div class="ews-indicator" id="ewsIndicator" data-state="loading">
+                <span class="ews-status-label" id="ewsStatus">MEMUAT</span>
+                <span class="ews-confidence" id="ewsConfidence">--%</span>
+                <span class="ews-confidence-caption">keyakinan model</span>
+            </div>
+            <div class="ews-narrative">
+                <h4>Potensi cuaca</h4>
+                <p id="ewsDescription">Mengambil prediksi dari empat observasi METAR terakhir.</p>
+                <span class="ews-metar" id="ewsMetar">METAR terbaru: menunggu data</span>
+            </div>
+        </div>
+        <div class="ews-charts grid grid-cols-1 gap-6 md:grid-cols-2">
+            <div class="ews-chart">
+                <h4>Kecepatan angin <span>(kt)</span></h4>
+                <div class="ews-chart-frame"><canvas id="ewsWindChart" aria-label="Tren angin dan regresi"></canvas></div>
+            </div>
+            <div class="ews-chart">
+                <h4>Tekanan QNH <span>(hPa)</span></h4>
+                <div class="ews-chart-frame"><canvas id="ewsQnhChart" aria-label="Tren QNH dan regresi"></canvas></div>
+            </div>
+            <div class="ews-chart ews-explanation-chart">
+                <h4>Kontribusi fitur model <span>(TreeSHAP, log-odds)</span></h4>
+                <p class="ews-chart-note">Nilai positif mendorong prediksi ke BAHAYA; nilai negatif menurunkan skor risiko. Ditampilkan 10 fitur teratas.</p>
+                <div class="ews-contribution-frame"><canvas id="ewsContributionChart" aria-label="Kontribusi TreeSHAP fitur cuaca"></canvas></div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="card lstm-panel fade-in" id="lstmPanel" aria-live="polite" style="animation-delay:0.1s">
+    <div class="card-header">
+        <div>
+            <h3 class="card-title"><span class="icon">🔭</span> Forecast Cuaca LSTM</h3>
+            <p class="lstm-subtitle">Prediksi cuaca multi-langkah (+30 menit dan +1 jam) dari 10 observasi METAR terakhir</p>
+        </div>
+        <div class="lstm-header-actions">
+            <span class="lstm-state" id="lstmState" data-state="loading">MENUNGGU</span>
+            <button class="btn btn-sm btn-outline lstm-refresh-btn" id="lstmRefresh" type="button" title="Muat ulang prediksi">↻</button>
+            <button type="button" class="btn btn-sm btn-outline lstm-collapse-btn" id="lstmCollapseBtn" onclick="toggleLstmPanel()" aria-expanded="true" title="Ciutkan / Buka Prediksi">
+                <span class="lstm-collapse-icon">▲</span>
+                <span class="lstm-collapse-text">Ciutkan</span>
+            </button>
+        </div>
+    </div>
+    <div class="lstm-collapsible-content" id="lstmCollapsibleContent">
+        <div class="lstm-error hidden" id="lstmError" role="status"></div>
+        <div class="lstm-forecast-meta">
+            <span>Observasi terakhir <strong id="lstmActualTime">--</strong></span>
+            <span>Prediksi +30 menit <strong id="lstmForecastTime30m">--</strong></span>
+            <span>Prediksi +1 jam <strong id="lstmForecastTime1h">--</strong></span>
+            <strong id="lstmForecastTime" style="display:none">--</strong>
+        </div>
+        <div class="table-responsive lstm-metrics-wrap">
+            <table class="data-table modern-table lstm-metrics-table">
+                <thead>
+                    <tr>
+                        <th>Parameter</th>
+                        <th>Aktual</th>
+                        <th>Prediksi +30 Menit</th>
+                        <th>Prediksi +1 Jam</th>
+                        <th>Perubahan (+1j)</th>
+                    </tr>
+                </thead>
+                <tbody id="lstmMetrics">
+                    <tr><td colspan="5">Menunggu layanan LSTM...</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="lstm-charts">
+            <div class="lstm-chart-item"><h4>Suhu <span>(C)</span></h4><div class="lstm-chart-frame"><canvas id="lstmTempChart" aria-label="Suhu aktual dan prediksi"></canvas></div></div>
+            <div class="lstm-chart-item"><h4>Tekanan QNH <span>(hPa)</span></h4><div class="lstm-chart-frame"><canvas id="lstmQnhChart" aria-label="QNH aktual dan prediksi"></canvas></div></div>
+            <div class="lstm-chart-item"><h4>Kecepatan angin <span>(kt)</span></h4><div class="lstm-chart-frame"><canvas id="lstmWindChart" aria-label="Angin aktual dan prediksi"></canvas></div></div>
+            <div class="lstm-chart-item"><h4>Titik embun <span>(C)</span></h4><div class="lstm-chart-frame"><canvas id="lstmDewChart" aria-label="Titik embun aktual dan prediksi"></canvas></div></div>
+        </div>
+    </div>
+</section>
 
 <!-- ========== HISTORICAL TRENDS ==========
     <div class="card fade-in" style="animation-delay:0.16s">
