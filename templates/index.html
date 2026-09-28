@@ -414,9 +414,9 @@
 <!-- We inject the initial chart data rendered from the server -->
 {% if has_history %}
 <!-- Data Storage for Charts -->
-<div id="chart-data-store" style="display: none;" data-labels='{{ labels | tojson | safe }}'
-    data-temps='{{ temps | tojson | safe }}' data-dewpoints='{{ dewpoints | tojson | safe }}' data-pressures='{{ pressures | tojson | safe }}'
-    data-winds='{{ winds | tojson | safe }}' data-gusts='{{ gusts | tojson | safe }}'></div>
+<div id="chart-data-store" style="display: none;" data-labels='{{ labels | default([]) | tojson | safe }}'
+    data-temps='{{ temps | default([]) | tojson | safe }}' data-dewpoints='{{ dewpoints | default([]) | tojson | safe }}' data-pressures='{{ pressures | default([]) | tojson | safe }}'
+    data-winds='{{ winds | default([]) | tojson | safe }}' data-gusts='{{ gusts | default([]) | tojson | safe }}'></div>
 
 <script>
     document.addEventListener("DOMContentLoaded", function () {

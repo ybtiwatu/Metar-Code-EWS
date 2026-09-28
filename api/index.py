@@ -2413,6 +2413,7 @@ def home():
         if has_history:
             labels = [pd.to_datetime(t).strftime("%d/%m/%y %H:%M") for t in history['time'].tolist()]
             temps = [extract_temp(m) for m in history['metar'].tolist()]
+            dewpoints = [parse_metar(str(m)).get("dewpoint_c") for m in history['metar'].tolist()]
             pressures = [extract_pressure(m) for m in history['metar'].tolist()]
             
             # Extract winds and gusts for trend charts
@@ -2432,11 +2433,17 @@ def home():
             history_count = len(history)
         else:
             labels = []
+            temps = []
+            dewpoints = []
+            pressures = []
             winds = []
             gusts = []
     else:
         history = pd.DataFrame(columns=["station", "time", "metar"])
         labels = []
+        temps = []
+        dewpoints = []
+        pressures = []
         winds = []
         gusts = []
     
@@ -2475,6 +2482,7 @@ def home():
         current_day=current_day if 'current_day' in locals() else "",
         last_saved=last_saved,
         temps=temps,
+        dewpoints=dewpoints,
         pressures=pressures,
         winds=winds,
         gusts=gusts,
@@ -2517,6 +2525,7 @@ def common_view_context_data():
     
     labels = []
     temps = []
+    dewpoints = []
     pressures = []
     winds = []
     gusts = []
