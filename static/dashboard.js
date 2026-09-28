@@ -3277,20 +3277,24 @@ window.filterReportType = filterReportType;
         tbody.replaceChildren();
         for (const parameter of lstmParameters) {
             const actual = Number(data.actual[parameter.key]);
-            const predicted = Number(data.predicted[parameter.key]);
-            const delta = predicted - actual;
+            const pred30 = Number((data.predicted_30m || data.predicted)[parameter.key]);
+            const pred1h = Number((data.predicted_1h || data.predicted)[parameter.key]);
+            const delta1h = pred1h - actual;
+            const delta30 = pred30 - actual;
             const row = document.createElement('tr');
             const values = [
                 parameter.label,
                 `${actual.toFixed(2)} ${parameter.unit}`,
-                `${predicted.toFixed(2)} ${parameter.unit}`,
-                `${delta > 0 ? '+' : ''}${delta.toFixed(2)} ${parameter.unit}`
+                `${pred30.toFixed(2)} ${parameter.unit} (${delta30 >= 0 ? '+' : ''}${delta30.toFixed(2)})`,
+                `${pred1h.toFixed(2)} ${parameter.unit}`,
+                `${delta1h >= 0 ? '+' : ''}${delta1h.toFixed(2)} ${parameter.unit}`
             ];
             values.forEach((value, index) => {
                 const cell = document.createElement('td');
                 cell.textContent = value;
-                if (index === 2) cell.classList.add('lstm-predicted-value');
-                if (index === 3) cell.classList.add(delta >= 0 ? 'lstm-delta-up' : 'lstm-delta-down');
+                if (index === 2) cell.classList.add('lstm-predicted-value-30m');
+                if (index === 3) cell.classList.add('lstm-predicted-value');
+                if (index === 4) cell.classList.add(delta1h >= 0 ? 'lstm-delta-up' : 'lstm-delta-down');
                 row.append(cell);
             });
             tbody.append(row);
@@ -3301,40 +3305,74 @@ window.filterReportType = filterReportType;
         if (typeof Chart === 'undefined') return;
         const history = data.history || [];
         const labels = history.map(item => formatLstmTime(item.time));
-        labels.push(formatLstmTime(data.forecast_time));
+        if (data.forecast_time_30m) {
+            labels.push(formatLstmTime(data.forecast_time_30m));
+        }
+        labels.push(formatLstmTime(data.forecast_time_1h || data.forecast_time));
 
         for (const parameter of lstmParameters) {
             const canvas = document.getElementById(parameter.canvas);
             if (!canvas) continue;
             const actualValues = history.map(item => Number(item[parameter.key]));
             const currentValue = Number(data.actual[parameter.key]);
-            const predictedValue = Number(data.predicted[parameter.key]);
-            actualValues.push(null);
-            const forecastValues = Array(history.length - 1).fill(null);
-            forecastValues.push(currentValue, predictedValue);
+            const pred30 = data.predicted_30m ? Number(data.predicted_30m[parameter.key]) : null;
+            const pred1h = Number((data.predicted_1h || data.predicted)[parameter.key]);
 
-            if (lstmCharts[parameter.canvas]) lstmCharts[parameter.canvas].destroy();
-            lstmCharts[parameter.canvas] = new Chart(canvas, {
-                type: 'line',
-                data: { labels, datasets: [
-                    {
-                        label: 'Aktual', data: actualValues, borderColor: parameter.color,
-                        backgroundColor: parameter.color + '22', pointRadius: 2.5,
-                        tension: 0.25, spanGaps: false
-                    },
-                    {
-                        label: 'Prediksi +1 jam', data: forecastValues, borderColor: '#fb923c',
-                        backgroundColor: '#fb923c22', borderDash: [6, 4], pointRadius: 4,
-                        pointStyle: 'rectRot', tension: 0, spanGaps: false
+            if (data.forecast_time_30m) {
+                actualValues.push(null, null);
+                const forecastValues = Array(history.length - 1).fill(null);
+                forecastValues.push(currentValue, pred30, pred1h);
+
+                if (lstmCharts[parameter.canvas]) lstmCharts[parameter.canvas].destroy();
+                lstmCharts[parameter.canvas] = new Chart(canvas, {
+                    type: 'line',
+                    data: { labels, datasets: [
+                        {
+                            label: 'Aktual', data: actualValues, borderColor: parameter.color,
+                            backgroundColor: parameter.color + '22', pointRadius: 2.5,
+                            tension: 0.25, spanGaps: false
+                        },
+                        {
+                            label: 'Prediksi (+30m & +1j)', data: forecastValues, borderColor: '#fb923c',
+                            backgroundColor: '#fb923c22', borderDash: [6, 4], pointRadius: 4,
+                            pointStyle: 'rectRot', tension: 0, spanGaps: false
+                        }
+                    ] },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        interaction: { mode: 'index', intersect: false },
+                        plugins: { legend: { position: 'bottom' } },
+                        scales: { y: { beginAtZero: false } }
                     }
-                ] },
-                options: {
-                    responsive: true, maintainAspectRatio: false,
-                    interaction: { mode: 'index', intersect: false },
-                    plugins: { legend: { position: 'bottom' } },
-                    scales: { y: { beginAtZero: false } }
-                }
-            });
+                });
+            } else {
+                actualValues.push(null);
+                const forecastValues = Array(history.length - 1).fill(null);
+                forecastValues.push(currentValue, pred1h);
+
+                if (lstmCharts[parameter.canvas]) lstmCharts[parameter.canvas].destroy();
+                lstmCharts[parameter.canvas] = new Chart(canvas, {
+                    type: 'line',
+                    data: { labels, datasets: [
+                        {
+                            label: 'Aktual', data: actualValues, borderColor: parameter.color,
+                            backgroundColor: parameter.color + '22', pointRadius: 2.5,
+                            tension: 0.25, spanGaps: false
+                        },
+                        {
+                            label: 'Prediksi +1 jam', data: forecastValues, borderColor: '#fb923c',
+                            backgroundColor: '#fb923c22', borderDash: [6, 4], pointRadius: 4,
+                            pointStyle: 'rectRot', tension: 0, spanGaps: false
+                        }
+                    ] },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        interaction: { mode: 'index', intersect: false },
+                        plugins: { legend: { position: 'bottom' } },
+                        scales: { y: { beginAtZero: false } }
+                    }
+                });
+            }
         }
     }
 
@@ -3366,9 +3404,13 @@ window.filterReportType = filterReportType;
             renderLstmMetrics(data);
             drawLstmCharts(data);
             const actualTimeEl = document.getElementById('lstmActualTime');
+            const forecastTime30mEl = document.getElementById('lstmForecastTime30m');
+            const forecastTime1hEl = document.getElementById('lstmForecastTime1h');
             const forecastTimeEl = document.getElementById('lstmForecastTime');
             if (actualTimeEl) actualTimeEl.textContent = formatLstmTime(data.latest_time);
-            if (forecastTimeEl) forecastTimeEl.textContent = formatLstmTime(data.forecast_time);
+            if (forecastTime30mEl) forecastTime30mEl.textContent = formatLstmTime(data.forecast_time_30m);
+            if (forecastTime1hEl) forecastTime1hEl.textContent = formatLstmTime(data.forecast_time_1h || data.forecast_time);
+            if (forecastTimeEl) forecastTimeEl.textContent = formatLstmTime(data.forecast_time_1h || data.forecast_time);
             if (state) {
                 state.dataset.state = 'ready';
                 state.textContent = 'PREDIKSI SIAP';

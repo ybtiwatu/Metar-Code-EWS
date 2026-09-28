@@ -83,3 +83,25 @@ def predict_metar_lstm(sequence_10x4):
     for i, feat in enumerate(weights["features"]):
         results[str(feat)] = float(y_pred[i])
     return results
+
+
+def predict_metar_multistep(sequence_10x4, steps=2):
+    """
+    Run autoregressive multi-step forecasting.
+    Returns a list of dicts for each step (e.g., step 1 = +30m, step 2 = +1h).
+    """
+    seq = np.asarray(sequence_10x4, dtype=np.float32)
+    weights = _get_weights()
+    features = weights["features"]
+
+    predictions = []
+    current_seq = seq.copy()
+
+    for _ in range(steps):
+        pred_dict = predict_metar_lstm(current_seq)
+        predictions.append(pred_dict)
+        next_row = np.array([pred_dict[str(feat)] for feat in features], dtype=np.float32)
+        current_seq = np.vstack([current_seq[1:], next_row])
+
+    return predictions
+

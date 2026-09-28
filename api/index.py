@@ -25,9 +25,9 @@ except (ImportError, ValueError):
     from sheets_handler import sheets_handler  # type: ignore
 
 try:
-    from .lstm_predictor import predict_metar_lstm  # type: ignore
+    from .lstm_predictor import predict_metar_lstm, predict_metar_multistep  # type: ignore
 except (ImportError, ValueError):
-    from lstm_predictor import predict_metar_lstm  # type: ignore
+    from lstm_predictor import predict_metar_lstm, predict_metar_multistep  # type: ignore
 
 # Global cache state used by polling and history endpoints.
 _last_fetch_time = 0
@@ -1419,14 +1419,20 @@ def api_lstm_forecast():
                 "required_steps": 10,
             }), 503
 
-        # Run embedded NumPy LSTM inference
+        # Run embedded multi-step NumPy LSTM inference (step 1 = +30m, step 2 = +1h)
         sequence_10x4 = [item["values"] for item in observations]
-        predicted_dict = predict_metar_lstm(sequence_10x4)
+        steps_pred = predict_metar_multistep(sequence_10x4, steps=2)
+        predicted_30m = steps_pred[0]
+        predicted_1h = steps_pred[1]
 
         latest_item = observations[-1]
         actual_dict = dict(zip(feature_order, latest_item["values"]))
-        deltas_dict = {
-            feat: round(predicted_dict[feat] - actual_dict[feat], 2)
+        deltas_30m = {
+            feat: round(predicted_30m[feat] - actual_dict[feat], 2)
+            for feat in feature_order
+        }
+        deltas_1h = {
+            feat: round(predicted_1h[feat] - actual_dict[feat], 2)
             for feat in feature_order
         }
 
@@ -1436,7 +1442,8 @@ def api_lstm_forecast():
         } for item in observations]
 
         latest_time = latest_item["time"].isoformat().replace("+00:00", "Z")
-        forecast_time = (latest_item["time"] + timedelta(hours=1)).isoformat().replace("+00:00", "Z")
+        forecast_time_30m = (latest_item["time"] + timedelta(minutes=30)).isoformat().replace("+00:00", "Z")
+        forecast_time_1h = (latest_item["time"] + timedelta(hours=1)).isoformat().replace("+00:00", "Z")
 
         return jsonify({
             "status": "success",
@@ -1444,10 +1451,16 @@ def api_lstm_forecast():
             "features": feature_order,
             "latest_metar": latest_item["raw"],
             "latest_time": latest_time,
-            "forecast_time": forecast_time,
+            "forecast_time_30m": forecast_time_30m,
+            "forecast_time_1h": forecast_time_1h,
+            "forecast_time": forecast_time_1h,
             "actual": actual_dict,
-            "predicted": {k: round(v, 2) for k, v in predicted_dict.items()},
-            "deltas": deltas_dict,
+            "predicted_30m": {k: round(v, 2) for k, v in predicted_30m.items()},
+            "predicted_1h": {k: round(v, 2) for k, v in predicted_1h.items()},
+            "predicted": {k: round(v, 2) for k, v in predicted_1h.items()},
+            "deltas_30m": deltas_30m,
+            "deltas_1h": deltas_1h,
+            "deltas": deltas_1h,
             "history": history_payload,
         })
     except Exception as error:

@@ -305,10 +305,11 @@
 
 .lstm-metrics-table {
   width: 100%;
-  min-width: 560px;
+  min-width: 640px;
   margin: 0;
 }
 
+.lstm-predicted-value-30m { color: #38bdf8 !important; font-weight: 700; }
 .lstm-predicted-value { color: #f59e0b !important; font-weight: 700; }
 .lstm-delta-up { color: #f87171 !important; font-weight: 600; }
 .lstm-delta-down { color: #34d399 !important; font-weight: 600; }
