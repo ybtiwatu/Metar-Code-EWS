@@ -3162,13 +3162,16 @@ window.filterReportType = filterReportType;
         const panel = document.getElementById('ewsPanel');
         if (!panel) return;
         const updated = document.getElementById('ewsUpdated');
+        const refreshBtn = document.getElementById('ewsRefreshBtn');
+        if (updated) updated.textContent = 'Memperbarui data...';
+        if (refreshBtn) refreshBtn.classList.add('rotating');
         try {
             const response = await fetch('/api/ews-status', { headers: { Accept: 'application/json' } });
             const data = await response.json();
             if (!response.ok) {
                 const diagnostic = [data.stage, data.error_code, data.missing_module]
                     .filter(Boolean).join(' / ');
-                const message = data.error || 'Data EWS belum tersedia.';
+                const message = data.error || 'Data analisis belum tersedia.';
                 throw new Error(diagnostic ? `${message} (${diagnostic})` : message);
             }
 
@@ -3182,15 +3185,18 @@ window.filterReportType = filterReportType;
             drawEwsChart('ewsWindChart', data.history, 'wind_speed_kt', 'Kecepatan angin', '#0f766e');
             drawEwsChart('ewsQnhChart', data.history, 'qnh_hpa', 'QNH', '#2563a6');
             drawEwsExplanationChart(data.explanation);
-            updated.textContent = `Diperbarui ${new Date().toLocaleTimeString('id-ID')}`;
+            if (updated) updated.textContent = `Diperbarui ${new Date().toLocaleTimeString('id-ID')}`;
         } catch (error) {
             document.getElementById('ewsIndicator').dataset.state = 'error';
             document.getElementById('ewsStatus').textContent = 'TIDAK TERSEDIA';
             document.getElementById('ewsConfidence').textContent = '--%';
             document.getElementById('ewsDescription').textContent = error.message;
-            updated.textContent = 'Gagal memperbarui';
+            if (updated) updated.textContent = 'Gagal memperbarui';
+        } finally {
+            if (refreshBtn) refreshBtn.classList.remove('rotating');
         }
     }
+    window.loadEwsStatus = loadEwsStatus;
 
     function toggleEwsPanel() {
         const content = document.getElementById('ewsCollapsibleContent');

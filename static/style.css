@@ -141,6 +141,34 @@
   gap: 12px;
 }
 
+.ews-refresh-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  font-size: 1rem;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.ews-refresh-btn:hover {
+  background: var(--bg-surface-alt);
+  transform: translateY(-1px);
+}
+
+.ews-refresh-btn.rotating {
+  animation: ews-spin 0.8s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes ews-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 .ews-collapse-btn {
   display: inline-flex;
   align-items: center;
