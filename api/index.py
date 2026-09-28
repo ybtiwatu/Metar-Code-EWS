@@ -24,6 +24,11 @@ try:
 except (ImportError, ValueError):
     from sheets_handler import sheets_handler  # type: ignore
 
+try:
+    from .lstm_predictor import predict_metar_lstm  # type: ignore
+except (ImportError, ValueError):
+    from lstm_predictor import predict_metar_lstm  # type: ignore
+
 # Global cache state used by polling and history endpoints.
 _last_fetch_time = 0
 _cached_metar = None
@@ -1371,6 +1376,86 @@ def api_ews_alert_logs():
         "count": len(logs),
         "filters": {"date": date or None, "station": station or None},
     })
+
+
+@app.route("/api/lstm-forecast")
+def api_lstm_forecast():
+    """Predict next-hour weather metrics using embedded NumPy LSTM model."""
+    station = request.args.get("station", "WARR").strip().upper()
+    if not re.fullmatch(r"[A-Z]{4}", station):
+        return jsonify({"error": "ICAO harus terdiri dari 4 huruf."}), 400
+
+    feature_order = ["suhu_c", "qnh_hpa", "kec_angin_kt", "dew_point_c"]
+    try:
+        rows = sheets_handler.get_recent_data(limit=200, bypass_cache=True)
+        observations = []
+        for row in rows:
+            if str(row.get("station", "")).strip().upper() != station:
+                continue
+            try:
+                observed_at = pd.to_datetime(row.get("time"), errors="coerce", utc=True)
+                if pd.isna(observed_at):
+                    continue
+                values = _parse_ews_metar(row.get("metar", ""))
+            except Exception:
+                continue
+
+            feature_values = [values[name] for name in feature_order]
+            if not all(math.isfinite(float(value)) for value in feature_values):
+                continue
+            observations.append({
+                "time": observed_at.to_pydatetime(),
+                "values": [float(value) for value in feature_values],
+                "raw": normalize_metar(row.get("metar", "")),
+            })
+
+        observations.sort(key=lambda item: item["time"])
+        observations = observations[-10:]
+        if len(observations) < 10:
+            return jsonify({
+                "error": f"Forecast LSTM memerlukan 10 METAR valid untuk {station}; tersedia {len(observations)}.",
+                "error_code": "LSTM_HISTORY_INSUFFICIENT",
+                "available_steps": len(observations),
+                "required_steps": 10,
+            }), 503
+
+        # Run embedded NumPy LSTM inference
+        sequence_10x4 = [item["values"] for item in observations]
+        predicted_dict = predict_metar_lstm(sequence_10x4)
+
+        latest_item = observations[-1]
+        actual_dict = dict(zip(feature_order, latest_item["values"]))
+        deltas_dict = {
+            feat: round(predicted_dict[feat] - actual_dict[feat], 2)
+            for feat in feature_order
+        }
+
+        history_payload = [{
+            "time": item["time"].isoformat().replace("+00:00", "Z"),
+            **dict(zip(feature_order, item["values"])),
+        } for item in observations]
+
+        latest_time = latest_item["time"].isoformat().replace("+00:00", "Z")
+        forecast_time = (latest_item["time"] + timedelta(hours=1)).isoformat().replace("+00:00", "Z")
+
+        return jsonify({
+            "status": "success",
+            "station": station,
+            "features": feature_order,
+            "latest_metar": latest_item["raw"],
+            "latest_time": latest_time,
+            "forecast_time": forecast_time,
+            "actual": actual_dict,
+            "predicted": {k: round(v, 2) for k, v in predicted_dict.items()},
+            "deltas": deltas_dict,
+            "history": history_payload,
+        })
+    except Exception as error:
+        print(f"[LSTM] Error: {error}", file=sys.stderr)
+        return jsonify({
+            "error": "Forecast LSTM gagal diproses.",
+            "error_code": type(error).__name__,
+        }), 500
 
 
 @app.route("/api/metar/<station_code>")

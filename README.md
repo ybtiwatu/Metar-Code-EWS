@@ -84,7 +84,7 @@ metar-auto-dashboard/
 Project ini siap di-deploy langsung ke Vercel:
 1. Hubungkan repository ke dashboard Vercel.
 2. Atur Environment Variables untuk Google Sheets (jika diperlukan).
-3. Klik Deploy.
+3. Klik Deploy. Fitur AI LSTM Weather Forecasting sudah dioptimasi menggunakan engine inferensi NumPy tersemat (~115 KB), sehingga tidak memerlukan TensorFlow dan aman dari batasan ukuran bundle 250 MB Vercel.
 
 ---
 
@@ -104,8 +104,8 @@ Project ini siap di-deploy langsung ke Vercel:
 - [x] Sticky Navigation UI
 - [x] System Status Persistence
 - [x] Real-time Chart Refresh Consolidaton
+- [x] Weather AI Forecasting (LSTM 1-hour Ahead)
 - [ ] Multi-Station Support (WARR, WADD, WAAA)
-- [ ] Weather AI Forecasting
 
 ---
 

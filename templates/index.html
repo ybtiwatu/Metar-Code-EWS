@@ -55,6 +55,40 @@
     </div>
 </section>
 
+<section class="card lstm-panel fade-in" id="lstmPanel" aria-live="polite">
+    <div class="card-header">
+        <div>
+            <h3 class="card-title"><span class="icon">🔭</span> Forecast Cuaca LSTM</h3>
+            <p class="lstm-subtitle">Prediksi satu langkah ke depan dari 10 observasi METAR terakhir</p>
+        </div>
+        <div class="lstm-header-actions">
+            <span class="lstm-state" id="lstmState" data-state="loading">MENUNGGU</span>
+            <button class="btn btn-sm btn-outline" id="lstmRefresh" type="button" title="Muat ulang prediksi">↻</button>
+        </div>
+    </div>
+    <div class="lstm-error hidden" id="lstmError" role="status"></div>
+    <div class="lstm-forecast-meta">
+        <span>Observasi terakhir <strong id="lstmActualTime">--</strong></span>
+        <span>Perkiraan waktu <strong id="lstmForecastTime">--</strong></span>
+    </div>
+    <div class="table-responsive lstm-metrics-wrap">
+        <table class="data-table lstm-metrics-table">
+            <thead>
+                <tr><th>Parameter</th><th>Aktual</th><th>Prediksi +1 jam</th><th>Perubahan</th></tr>
+            </thead>
+            <tbody id="lstmMetrics">
+                <tr><td colspan="4">Menunggu layanan LSTM...</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <div class="lstm-charts">
+        <div class="lstm-chart-item"><h4>Suhu <span>(C)</span></h4><div class="lstm-chart-frame"><canvas id="lstmTempChart" aria-label="Suhu aktual dan prediksi"></canvas></div></div>
+        <div class="lstm-chart-item"><h4>Tekanan QNH <span>(hPa)</span></h4><div class="lstm-chart-frame"><canvas id="lstmQnhChart" aria-label="QNH aktual dan prediksi"></canvas></div></div>
+        <div class="lstm-chart-item"><h4>Kecepatan angin <span>(kt)</span></h4><div class="lstm-chart-frame"><canvas id="lstmWindChart" aria-label="Angin aktual dan prediksi"></canvas></div></div>
+        <div class="lstm-chart-item"><h4>Titik embun <span>(C)</span></h4><div class="lstm-chart-frame"><canvas id="lstmDewChart" aria-label="Titik embun aktual dan prediksi"></canvas></div></div>
+    </div>
+</section>
+
 <section class="card ews-log-card fade-in" id="ewsLogPanel">
     <div class="card-header">
         <h3 class="card-title"><span class="icon">🔔</span> Riwayat Peringatan EWS</h3>

@@ -3,3 +3,5 @@ venv/
 .git/
 __pycache__/
 *.py[cod]
+model_lstm_metar.h5
+lstm_scaler.pkl

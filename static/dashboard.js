@@ -3255,8 +3255,145 @@ window.filterReportType = filterReportType;
         }
     }
 
+    const lstmCharts = {};
+    const lstmParameters = [
+        { key: 'suhu_c', label: 'Suhu', unit: 'C', canvas: 'lstmTempChart', color: '#38bdf8' },
+        { key: 'qnh_hpa', label: 'Tekanan QNH', unit: 'hPa', canvas: 'lstmQnhChart', color: '#a78bfa' },
+        { key: 'kec_angin_kt', label: 'Kecepatan angin', unit: 'kt', canvas: 'lstmWindChart', color: '#34d399' },
+        { key: 'dew_point_c', label: 'Titik embun', unit: 'C', canvas: 'lstmDewChart', color: '#fbbf24' }
+    ];
+
+    function formatLstmTime(value) {
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return String(value || '--');
+        return date.toLocaleString('id-ID', {
+            day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'UTC'
+        }) + ' UTC';
+    }
+
+    function renderLstmMetrics(data) {
+        const tbody = document.getElementById('lstmMetrics');
+        if (!tbody) return;
+        tbody.replaceChildren();
+        for (const parameter of lstmParameters) {
+            const actual = Number(data.actual[parameter.key]);
+            const predicted = Number(data.predicted[parameter.key]);
+            const delta = predicted - actual;
+            const row = document.createElement('tr');
+            const values = [
+                parameter.label,
+                `${actual.toFixed(2)} ${parameter.unit}`,
+                `${predicted.toFixed(2)} ${parameter.unit}`,
+                `${delta > 0 ? '+' : ''}${delta.toFixed(2)} ${parameter.unit}`
+            ];
+            values.forEach((value, index) => {
+                const cell = document.createElement('td');
+                cell.textContent = value;
+                if (index === 2) cell.classList.add('lstm-predicted-value');
+                if (index === 3) cell.classList.add(delta >= 0 ? 'lstm-delta-up' : 'lstm-delta-down');
+                row.append(cell);
+            });
+            tbody.append(row);
+        }
+    }
+
+    function drawLstmCharts(data) {
+        if (typeof Chart === 'undefined') return;
+        const history = data.history || [];
+        const labels = history.map(item => formatLstmTime(item.time));
+        labels.push(formatLstmTime(data.forecast_time));
+
+        for (const parameter of lstmParameters) {
+            const canvas = document.getElementById(parameter.canvas);
+            if (!canvas) continue;
+            const actualValues = history.map(item => Number(item[parameter.key]));
+            const currentValue = Number(data.actual[parameter.key]);
+            const predictedValue = Number(data.predicted[parameter.key]);
+            actualValues.push(null);
+            const forecastValues = Array(history.length - 1).fill(null);
+            forecastValues.push(currentValue, predictedValue);
+
+            if (lstmCharts[parameter.canvas]) lstmCharts[parameter.canvas].destroy();
+            lstmCharts[parameter.canvas] = new Chart(canvas, {
+                type: 'line',
+                data: { labels, datasets: [
+                    {
+                        label: 'Aktual', data: actualValues, borderColor: parameter.color,
+                        backgroundColor: parameter.color + '22', pointRadius: 2.5,
+                        tension: 0.25, spanGaps: false
+                    },
+                    {
+                        label: 'Prediksi +1 jam', data: forecastValues, borderColor: '#fb923c',
+                        backgroundColor: '#fb923c22', borderDash: [6, 4], pointRadius: 4,
+                        pointStyle: 'rectRot', tension: 0, spanGaps: false
+                    }
+                ] },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: { legend: { position: 'bottom' } },
+                    scales: { y: { beginAtZero: false } }
+                }
+            });
+        }
+    }
+
+    async function loadLstmForecast() {
+        const panel = document.getElementById('lstmPanel');
+        if (!panel) return;
+        const state = document.getElementById('lstmState');
+        const errorBox = document.getElementById('lstmError');
+        if (state) {
+            state.dataset.state = 'loading';
+            state.textContent = 'MEMUAT';
+        }
+        if (errorBox) errorBox.classList.add('hidden');
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 60000);
+
+        try {
+            const station = (document.getElementById('icaoInput')?.value || STATION || 'WARR').trim().toUpperCase();
+            const response = await fetch(`/api/lstm-forecast?station=${encodeURIComponent(station)}`, {
+                headers: { Accept: 'application/json' },
+                signal: controller.signal
+            });
+            const data = await response.json();
+            if (!response.ok) {
+                const diagnostic = data.error_code ? ` (${data.error_code})` : '';
+                throw new Error(`${data.error || 'Forecast LSTM tidak tersedia.'}${diagnostic}`);
+            }
+
+            renderLstmMetrics(data);
+            drawLstmCharts(data);
+            const actualTimeEl = document.getElementById('lstmActualTime');
+            const forecastTimeEl = document.getElementById('lstmForecastTime');
+            if (actualTimeEl) actualTimeEl.textContent = formatLstmTime(data.latest_time);
+            if (forecastTimeEl) forecastTimeEl.textContent = formatLstmTime(data.forecast_time);
+            if (state) {
+                state.dataset.state = 'ready';
+                state.textContent = 'PREDIKSI SIAP';
+            }
+        } catch (error) {
+            if (state) {
+                state.dataset.state = 'error';
+                state.textContent = 'TIDAK TERSEDIA';
+            }
+            if (errorBox) {
+                errorBox.textContent = error.name === 'AbortError'
+                    ? 'Waktu tunggu prediksi habis. Coba muat ulang.'
+                    : error.message;
+                errorBox.classList.remove('hidden');
+            }
+        } finally {
+            clearTimeout(timeoutId);
+        }
+    }
+
     document.addEventListener('DOMContentLoaded', () => {
         loadEwsStatus();
+        const lstmRefresh = document.getElementById('lstmRefresh');
+        if (lstmRefresh) lstmRefresh.addEventListener('click', loadLstmForecast);
+        loadLstmForecast();
         const dateFilter = document.getElementById('ewsLogDate');
         const logFilters = document.getElementById('ewsLogFilters');
         if (dateFilter && !dateFilter.value) {

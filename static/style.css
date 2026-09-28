@@ -237,6 +237,108 @@
   background: rgba(220, 38, 38, 0.08);
 }
 
+.lstm-panel {
+  border-top: 4px solid #7c3aed;
+}
+
+.lstm-subtitle {
+  margin: 4px 0 0;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.lstm-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.lstm-state {
+  padding: 5px 9px;
+  border-radius: var(--radius-full);
+  color: #475569;
+  background: #e2e8f0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.lstm-state[data-state="ready"] {
+  color: #166534;
+  background: #dcfce7;
+}
+
+.lstm-state[data-state="error"] {
+  color: #991b1b;
+  background: #fee2e2;
+}
+
+.lstm-error {
+  margin: 12px 0;
+  padding: 11px 14px;
+  border: 1px solid #fca5a5;
+  border-radius: var(--radius-sm);
+  color: #991b1b;
+  background: #fef2f2;
+  font-size: 0.88rem;
+}
+
+.lstm-error.hidden { display: none; }
+
+.lstm-forecast-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 24px;
+  margin: var(--space-md) 0;
+  color: var(--text-secondary);
+  font-size: 0.84rem;
+}
+
+.lstm-forecast-meta strong {
+  margin-left: 5px;
+  color: var(--text-primary);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.8rem;
+}
+
+.lstm-metrics-wrap { overflow-x: auto; }
+
+.lstm-metrics-table {
+  width: 100%;
+  min-width: 560px;
+  margin: 0;
+}
+
+.lstm-predicted-value { color: #f59e0b !important; font-weight: 700; }
+.lstm-delta-up { color: #f87171 !important; font-weight: 600; }
+.lstm-delta-down { color: #34d399 !important; font-weight: 600; }
+
+.lstm-charts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-lg);
+  margin-top: var(--space-lg);
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--border-color);
+}
+
+.lstm-chart-item h4 {
+  margin: 0 0 8px;
+  color: var(--text-primary);
+  font-size: 0.92rem;
+}
+
+.lstm-chart-item h4 span {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.lstm-chart-frame {
+  position: relative;
+  height: 210px;
+}
+
 @keyframes ews-danger-pulse {
   50% { box-shadow: 0 0 0 5px rgba(220, 38, 38, 0.12); }
 }
@@ -245,6 +347,8 @@
   .ews-overview { gap: var(--space-md); }
   .ews-chart-frame { height: 210px; }
   .ews-log-filters { grid-template-columns: 1fr; }
+  .lstm-charts { grid-template-columns: 1fr; }
+  .lstm-header-actions { align-items: flex-end; flex-direction: column; }
 }
 
 html {
