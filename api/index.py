@@ -6,6 +6,7 @@ import pandas as pd  # pyre-ignore
 import os
 import math
 import re
+import unicodedata
 import io   
 import pickle
 from datetime import datetime
@@ -554,18 +555,18 @@ def detect_metar_report_type(metar: str) -> str:
     Detect if METAR is a special report (COR, CCA, AMD, SPECI)
     Returns: 'COR', 'AMD', 'SPECI', or 'METAR'
     """
+    metar = normalize_metar(metar)
     if not metar:
         return "METAR"
-    
-    metar = metar.upper()
 
-    if " SPECI " in metar or metar.startswith("SPECI "):
+    parts = metar.split()
+    if parts[0] == "SPECI":
         return "SPECI"
 
-    if " AMD " in metar or metar.startswith("METAR AMD"):
+    if "AMD" in parts[:3]:
         return "AMD"
 
-    if " COR " in metar or metar.startswith("METAR COR") or " CCA " in metar or "CCA" in metar:
+    if "COR" in parts[:3] or "CCA" in parts[:3]:
         return "COR"
 
     return "METAR"
@@ -574,6 +575,7 @@ def detect_metar_report_type(metar: str) -> str:
 # PARSE METAR
 # =========================
 def parse_metar(metar: str) -> dict:
+    metar = normalize_metar(metar)
 
     data: dict = {
         "station": None,
@@ -597,8 +599,12 @@ def parse_metar(metar: str) -> dict:
     # Detect special report type
     data["report_type"] = detect_metar_report_type(metar)
 
-    clean_metar = metar.replace("=", "")
-    parts = clean_metar.split()
+    parts = metar.split()
+    station_index = 1 if parts and parts[0] in ("METAR", "SPECI") else 0
+    if station_index < len(parts) and parts[station_index] in ("COR", "AMD"):
+        station_index += 1
+    if station_index < len(parts) and re.fullmatch(r"[A-Z]{4}", parts[station_index]):
+        data["station"] = parts[station_index]
 
     # First, extract TEMPO clause before the main parsing
     # This removes TEMPO from METAR so weather isn't captured from TEMPO section
@@ -613,12 +619,9 @@ def parse_metar(metar: str) -> dict:
         main_metar = metar
     
     # Parse the main METAR (without TEMPO) for weather and other fields
-    parts: list[str] = main_metar.replace("=", "").split()
+    parts: list[str] = main_metar.split()
 
     for part in parts:
-
-        if len(part) == 4 and part.isalpha() and data["station"] is None:
-            data["station"] = part
 
         if part.endswith("Z") and len(part) == 7:
             data["day"] = part[0] + part[1]
@@ -1157,7 +1160,7 @@ def _load_ews_assets():
 def _parse_ews_metar(raw_metar):
     from metar import Metar
 
-    observation = Metar.Metar(str(raw_metar).strip().rstrip("="))
+    observation = Metar.Metar(normalize_metar(raw_metar))
 
     def value(field, units=None):
         if field is None:
@@ -2972,20 +2975,23 @@ def cron_sync():
 # =========================
 # HELPER: Normalize METAR for accurate comparison
 # =========================
-def normalize_metar(metar: str) -> str:
-    """
-    Normalisasi string METAR untuk comparison yang akurat.
-    Menghilangkan perbedaan formatting yang tidak signifikan.
-    """
-    if not metar:
+def normalize_metar(raw_metar: Any) -> str:
+    """Normalize copied METAR text before parsing, validation, or comparison."""
+    if not isinstance(raw_metar, str):
         return ""
-    # Remove trailing = (marker akhir METAR)
-    metar = metar.replace("=", "")
-    # Normalize whitespace (multiple spaces -> single space, strip ends)
-    metar = " ".join(metar.split())
-    # Uppercase untuk consistency
-    metar = metar.upper().strip()
-    return metar
+
+    normalized = unicodedata.normalize("NFKC", raw_metar)
+    cleaned = []
+    for character in normalized:
+        category = unicodedata.category(character)
+        if character.isspace() or category == "Cf":
+            cleaned.append(" ")
+        elif not category.startswith("C"):
+            cleaned.append(character)
+
+    normalized = re.sub(r"\s+", " ", "".join(cleaned)).strip()
+    normalized = re.sub(r"\s*=+\s*$", "", normalized)
+    return normalized.strip().upper()
 # =========================
 # CENTRALIZED METAR UPDATE DATA & SYNC (ANTI-DUPLIKASI)
 # =========================
@@ -3234,156 +3240,90 @@ def download_history():
 # METAR VALIDATOR
 # =========================
 def validate_metar(metar: str) -> list[str]:
-    """
-    Comprehensive METAR Validator for 10 groups
-    Returns a list of error strings or ["✅ METAR Valid"]
-    """
-    if not metar:
+    """Validate the required ICAO METAR groups and return readable errors."""
+    if not isinstance(metar, str):
+        return ["❌ Input METAR harus berupa teks"]
+
+    clean_metar = normalize_metar(metar)
+    if not clean_metar:
         return ["❌ Data METAR kosong"]
 
-    errors: list[str] = []
-    
-    # Pre-clean: remove = and handle multiple spaces
-    clean_metar = metar.replace("=", "").strip()
     tokens = clean_metar.split()
+    index = 0
+    if tokens[index] in ("METAR", "SPECI"):
+        index += 1
+    if index < len(tokens) and tokens[index] in ("COR", "AMD"):
+        index += 1
 
-    if len(tokens) < 5:
-        return ["❌ Format METAR terlalu pendek atau tidak lengkap"]
+    if index >= len(tokens) or not re.fullmatch(r"[A-Z]{4}", tokens[index]):
+        return ["❌ Kode stasiun ICAO harus terdiri dari 4 huruf"]
+    index += 1
 
-    # Skip first token if it's "METAR" or "SPECI"
-    idx = 0
-    if tokens[idx] in ["METAR", "SPECI"]:
-        idx += 1
+    if index >= len(tokens) or not re.fullmatch(r"[0-9]{6}Z", tokens[index]):
+        return ["❌ Waktu observasi harus berformat DDHHMMZ"]
+    day, hour, minute = int(tokens[index][:2]), int(tokens[index][2:4]), int(tokens[index][4:6])
+    if not (1 <= day <= 31 and 0 <= hour <= 23 and 0 <= minute <= 59):
+        return ["❌ Nilai tanggal atau waktu observasi di luar rentang"]
+    index += 1
 
-    # 1. ICAO Station (4 letters)
-    if idx < len(tokens):
-        if not re.match(r'^[A-Z]{4}$', tokens[idx]):
-            errors.append(f"❌ ICAO station salah: {tokens[idx]} (harus 4 huruf Kapital)")
-        idx += 1
+    if index < len(tokens) and tokens[index] == "AUTO":
+        index += 1
+    if index >= len(tokens):
+        return ["❌ Kelompok angin tidak ditemukan"]
 
-    # 2. Time Group (6 digits + Z)
-    if idx < len(tokens):
-        if not re.match(r'^\d{6}Z$', tokens[idx]):
-            errors.append(f"❌ Format waktu salah: {tokens[idx]} (harus 6 digit + Z)")
-        idx += 1
+    wind_match = re.fullmatch(r"(\d{3}|VRB)(\d{2,3})(?:G(\d{2,3}))?KT", tokens[index])
+    if not wind_match:
+        return ["❌ Kelompok angin harus berformat dddssKT atau VRBssKT"]
+    if wind_match.group(1) != "VRB" and int(wind_match.group(1)) > 360:
+        return ["❌ Arah angin harus berada pada rentang 000 sampai 360 derajat"]
+    index += 1
 
-    # 3. Wind Group
-    if idx < len(tokens):
-        # Supports: 05006KT, 18012G20KT, VRB03KT, 00000KT
-        wind_match = re.match(r'^(\d{3}|VRB)(\d{2,3})(G(\d{2,3}))?KT$', tokens[idx])
-        if wind_match:
-            dir_part = wind_match.group(1)
-            speed_part = int(wind_match.group(2))
-            gust_part = int(wind_match.group(4)) if wind_match.group(4) else None
-            
-            # 🔥 RULE 1: VRB Wind (Speed 00-02KT)
-            if dir_part == "VRB" and speed_part > 2:
-                errors.append(f"❌ Angin VRB harus 00-02KT (Terbaca: {speed_part}KT)")
-            
-            # 🔥 RULE 2: Gust Difference (>= 10KT)
-            if gust_part is not None:
-                if (gust_part - speed_part) < 10:
-                    errors.append(f"❌ Selisih Gust ({gust_part}KT) harus >= 10KT dari angin utama ({speed_part}KT)")
-            
-            idx += 1  # Valid wind format, advance
-        elif tokens[idx].endswith('KT'):
-            errors.append(f"❌ Format angin salah: {tokens[idx]}")
-            idx += 1
-        else:
-            errors.append("❌ Angin tidak ditemukan atau format salah")
+    remaining = tokens[index:]
+    if not remaining:
+        return ["❌ Kelompok jarak pandang tidak ditemukan"]
 
-    # From here on, groups can be more dynamic.
-    remaining_tokens = tokens[idx:] if idx < len(tokens) else []
-    
-    # Extract data for cross-validation
-    vis_val = None
-    for t in remaining_tokens:
-        if re.match(r'^\d{4}$', t):
-            vis_val = int(t)
-            break
-        elif t == "CAVOK":
-            vis_val = 9999
-            break
+    visibility = remaining[0]
+    is_cavok = visibility == "CAVOK"
+    if not is_cavok and not re.fullmatch(r"[0-9]{4}(?:NDV)?", visibility):
+        return ["❌ Jarak pandang harus 4 digit meter atau CAVOK"]
 
-    # 4. Visibility Group
-    if vis_val is None:
-        errors.append("❌ Cek Visibility (harus 4 digit atau CAVOK)")
+    temperature_pattern = re.compile(r"^(?:M?[0-9]{2}|//)/(?:M?[0-9]{2}|//)$")
+    pressure_pattern = re.compile(r"^Q[0-9]{4}$")
+    cloud_pattern = re.compile(
+        r"^(?:(?:FEW|SCT|BKN|OVC)(?:[0-9]{3}|///)(?:CB|TCU)?|VV(?:[0-9]{3}|///)|SKC|CLR|NSC|NCD)$"
+    )
+    temperature_index = next(
+        (position for position, token in enumerate(remaining[1:], start=1)
+         if temperature_pattern.fullmatch(token)),
+        None,
+    )
+    if temperature_index is None:
+        return ["❌ Suhu/titik embun harus berformat TT/TdTd, misalnya 27/24 atau M02/M04"]
 
-    # 5. Weather Group & 6. Cloud Group
-    cloud_prefixes = ["FEW", "SCT", "BKN", "OVC", "SKC", "NSC", "NCD", "VV"]
-    cloud_found = False
-    weather_phenomena = []
-    has_ts = False
-    has_cb = False
-    
-    for t in remaining_tokens:
-        # 🔥 Detect TS/VCTS for cross-validation
-        if ("TS" in t or "VCTS" in t) and not t.startswith("RE"):
-            has_ts = True
+    pressure_index = next(
+        (position for position, token in enumerate(remaining)
+         if pressure_pattern.fullmatch(token)),
+        None,
+    )
+    if pressure_index is None:
+        return ["❌ QNH harus berformat Q diikuti 4 digit, misalnya Q1010"]
+    if pressure_index < temperature_index:
+        return ["❌ Kelompok QNH harus muncul setelah suhu/titik embun"]
 
-        # Track weather for visibility rule
-        if t in ["HZ", "BR", "FG", "RA", "TS", "DZ", "SN"]:
-             weather_phenomena.append(t)
-             
-        if any(t.startswith(p) for p in cloud_prefixes):
-            cloud_found = True
-            if "CB" in t:
-                has_cb = True
-            if t in ["SKC", "NSC", "NCD"]: continue
-            
-            height_part = re.search(r'\d{3}', t)
-            if not height_part:
-                errors.append(f"❌ Tinggi awan salah: {t} (harus 3 digit)")
-            
-            prefix = t[:3]
-            if prefix in ["FEW", "SCT", "BKN", "OVC"]:
-                height = t[3:6]
-                if not height.isdigit() or len(height) != 3:
-                     errors.append(f"❌ Format kelompok awan salah: {t} (tinggi harus 3 digit)")
+    if not is_cavok and not any(
+        cloud_pattern.fullmatch(token) for token in remaining[1:temperature_index]
+    ):
+        return ["❌ Kelompok awan tidak ditemukan atau formatnya salah"]
 
-    # 🔥 NEW RULE: Missing Cloud Info
-    has_cavok = any(t == "CAVOK" for t in tokens)
-    if not cloud_found and not has_cavok:
-        errors.append("❌ metar tidak valid dan awan tidak ditemukan")
-    
-    # 🔥 RULE 3: Visibility with HZ or BR (Max 5000m)
-    if any(code in weather_phenomena for code in ["HZ", "BR"]):
-        if vis_val is not None and vis_val > 5000:
-            codes = [c for c in weather_phenomena if c in ["HZ", "BR"]]
-            errors.append(f"❌ Visibility {', '.join(codes)} harus <= 5000m (Terbaca: {vis_val}m)")
-
-    # 🔥 RULE 4: TS/VCTS requires CB
-    if has_ts and not has_cb:
-        errors.append("❌ METAR mengandung TS/VCTS tapi tidak ada indikator awan CB")
-
-    # 7. Temperature/Dewpoint (M?dd/M?dd)
-    temp_pattern = r'^M?\d{2}/M?\d{2}$'
-    if not any(re.match(temp_pattern, t) for t in remaining_tokens):
-        has_cavok = any(t == "CAVOK" for t in remaining_tokens)
-        if not has_cavok or not any("/" in t for t in remaining_tokens):
-            errors.append("❌ Format suhu TT/TdTd salah (contoh: 31/24)")
-
-    # 8. Pressure Group (Q + 4 digits)
-    if not any(re.match(r'^Q\d{4}$', t) for t in remaining_tokens):
-        errors.append("❌ Tekanan (QNH) salah (contoh: Q1010)")
-
-    # 9. Trend Group (Optional check)
-    trend_keywords = ["NOSIG", "TEMPO", "BECMG"]
-    # No hard error if missing, but can check format if present
-
-    if len(errors) == 0:
-        return ["✅ METAR Valid"]
-
-    return errors
+    return ["✅ METAR Valid"]
 
 @app.route("/api/validate", methods=["POST"])
 def api_validate():
-    data = request.get_json()
-    if not data or "metar" not in data:
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or "metar" not in data:
         return jsonify({"results": ["❌ Input tidak ditemukan"]}), 400
     
-    metar = data["metar"].strip()
-    results = validate_metar(metar)
+    results = validate_metar(data["metar"])
     return jsonify({"results": results})
 
 # =========================
@@ -3398,15 +3338,9 @@ def manual_parser():
     validation_results = None
 
     if request.method == "POST":
-        raw_metar = request.form["raw_metar"].strip()
-        # Extract ICAO station code (4 uppercase letters) from METAR
-        tokens = raw_metar.split()
-        station = "WARR"
-        for token in tokens:
-            if len(token) == 4 and token.isalpha() and token.isupper():
-                station = token
-                break
+        raw_metar = normalize_metar(request.form.get("raw_metar", ""))
         parsed = parse_metar(raw_metar)
+        station = parsed.get("station") or "WARR"
         parsed_qam = generate_qam(station, parsed, raw_metar)
         validation_results = validate_metar(raw_metar)
 
