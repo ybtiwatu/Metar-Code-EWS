@@ -187,6 +187,22 @@
   height: 230px;
 }
 
+.ews-explanation-chart {
+  grid-column: 1 / -1;
+}
+
+.ews-chart-note {
+  margin: 0 0 10px;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.ews-contribution-frame {
+  position: relative;
+  height: 330px;
+}
+
 @keyframes ews-danger-pulse {
   50% { box-shadow: 0 0 0 5px rgba(220, 38, 38, 0.12); }
 }

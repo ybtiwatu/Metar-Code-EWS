@@ -3106,6 +3106,58 @@ window.filterReportType = filterReportType;
         });
     }
 
+    function drawEwsExplanationChart(explanation) {
+        const canvasId = 'ewsContributionChart';
+        const canvas = document.getElementById(canvasId);
+        if (!canvas || typeof Chart === 'undefined' || !explanation?.features?.length) return;
+
+        const features = explanation.features.slice(0, 10);
+        if (charts[canvasId]) charts[canvasId].destroy();
+        charts[canvasId] = new Chart(canvas, {
+            type: 'bar',
+            data: {
+                labels: features.map(feature => feature.label),
+                datasets: [{
+                    label: 'Kontribusi TreeSHAP',
+                    data: features.map(feature => Number(feature.shap_value)),
+                    backgroundColor: features.map(feature =>
+                        Number(feature.shap_value) >= 0 ? 'rgba(220, 38, 38, 0.78)' : 'rgba(5, 150, 105, 0.78)'
+                    ),
+                    borderColor: features.map(feature =>
+                        Number(feature.shap_value) >= 0 ? '#b91c1c' : '#047857'
+                    ),
+                    borderWidth: 1,
+                    borderRadius: 3,
+                    barThickness: 18
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: context => `Kontribusi: ${Number(context.raw).toFixed(4)} log-odds`,
+                            afterLabel: context => {
+                                const observed = features[context.dataIndex].value;
+                                return `Nilai fitur: ${observed ?? 'tidak tersedia'}`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        title: { display: true, text: 'Dampak terhadap skor BAHAYA (log-odds)' },
+                        grid: { color: context => context.tick.value === 0 ? '#64748b' : 'rgba(148, 163, 184, 0.18)' }
+                    },
+                    y: { reverse: true, grid: { display: false } }
+                }
+            }
+        });
+    }
+
     async function loadEwsStatus() {
         const panel = document.getElementById('ewsPanel');
         if (!panel) return;
@@ -3129,6 +3181,7 @@ window.filterReportType = filterReportType;
             document.getElementById('ewsMetar').textContent = `METAR terbaru: ${data.metar_terbaru}`;
             drawEwsChart('ewsWindChart', data.history, 'wind_speed_kt', 'Kecepatan angin', '#0f766e');
             drawEwsChart('ewsQnhChart', data.history, 'qnh_hpa', 'QNH', '#2563a6');
+            drawEwsExplanationChart(data.explanation);
             updated.textContent = `Diperbarui ${new Date().toLocaleTimeString('id-ID')}`;
         } catch (error) {
             document.getElementById('ewsIndicator').dataset.state = 'error';

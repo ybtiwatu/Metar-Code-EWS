@@ -1249,6 +1249,48 @@ def api_ews_status():
         is_danger = int(prediction) == 1
         confidence = danger_probability if is_danger else 1 - danger_probability
 
+        stage = "shap_explanation"
+        import xgboost as xgb
+
+        contribution_frame = xgb.DMatrix(feature_frame, feature_names=feature_order)
+        contribution_values = model.get_booster().predict(
+            contribution_frame,
+            pred_contribs=True,
+        )[0]
+        feature_labels = {
+            "arah_angin_deg": "Arah angin (deg)",
+            "kec_angin_kt": "Kecepatan angin (kt)",
+            "visibilitas_m": "Visibilitas (m)",
+            "suhu_c": "Suhu (C)",
+            "dew_point_c": "Titik embun (C)",
+            "qnh_hpa": "Tekanan QNH (hPa)",
+            "status_cuaca_sekarang": "Kode badai saat ini",
+            "suhu_c_lag_1": "Suhu (1 observasi lalu)",
+            "suhu_c_lag_2": "Suhu (2 observasi lalu)",
+            "suhu_c_lag_3": "Suhu (3 observasi lalu)",
+            "qnh_hpa_lag_1": "QNH (1 observasi lalu)",
+            "qnh_hpa_lag_2": "QNH (2 observasi lalu)",
+            "qnh_hpa_lag_3": "QNH (3 observasi lalu)",
+            "kec_angin_kt_lag_1": "Angin (1 observasi lalu)",
+            "kec_angin_kt_lag_2": "Angin (2 observasi lalu)",
+            "kec_angin_kt_lag_3": "Angin (3 observasi lalu)",
+            "dew_point_c_lag_1": "Titik embun (1 observasi lalu)",
+            "dew_point_c_lag_2": "Titik embun (2 observasi lalu)",
+            "dew_point_c_lag_3": "Titik embun (3 observasi lalu)",
+        }
+        contributions = []
+        for feature_name, shap_value in zip(feature_order, contribution_values[:-1]):
+            numeric_value = float(shap_value)
+            observed_value = float(feature_values[feature_name])
+            contributions.append({
+                "feature": feature_name,
+                "label": feature_labels.get(feature_name, feature_name),
+                "value": observed_value if math.isfinite(observed_value) else None,
+                "shap_value": numeric_value,
+                "direction": "menaikkan risiko bahaya" if numeric_value > 0 else "menurunkan risiko bahaya",
+            })
+        contributions.sort(key=lambda item: abs(item["shap_value"]), reverse=True)
+
         history = [{
             "time": item["time"],
             "wind_speed_kt": None if pd.isna(item["kec_angin_kt"]) else item["kec_angin_kt"],
@@ -1268,6 +1310,13 @@ def api_ews_status():
             "deskripsi": description,
             "metar_terbaru": current["metar"],
             "history": history,
+            "explanation": {
+                "method": "XGBoost TreeSHAP",
+                "scale": "raw_margin_log_odds",
+                "base_value": float(contribution_values[-1]),
+                "raw_margin": float(sum(contribution_values)),
+                "features": contributions,
+            },
         })
     except FileNotFoundError as error:
         print(f"[EWS] stage={stage} missing model asset: {error}", file=sys.stderr)

@@ -47,6 +47,11 @@
             <h4>Tekanan QNH <span>(hPa)</span></h4>
             <div class="ews-chart-frame"><canvas id="ewsQnhChart" aria-label="Tren QNH dan regresi"></canvas></div>
         </div>
+        <div class="ews-chart ews-explanation-chart">
+            <h4>Kontribusi fitur model <span>(TreeSHAP, log-odds)</span></h4>
+            <p class="ews-chart-note">Nilai positif mendorong prediksi ke BAHAYA; nilai negatif menurunkan skor risiko. Ditampilkan 10 fitur teratas.</p>
+            <div class="ews-contribution-frame"><canvas id="ewsContributionChart" aria-label="Kontribusi TreeSHAP fitur cuaca"></canvas></div>
+        </div>
     </div>
 </section>
 
