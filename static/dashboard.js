@@ -3113,7 +3113,11 @@ window.filterReportType = filterReportType;
         try {
             const response = await fetch('/api/ews-status', { headers: { Accept: 'application/json' } });
             const data = await response.json();
-            if (!response.ok) throw new Error(data.error || 'Data EWS belum tersedia.');
+            if (!response.ok) {
+                const diagnostic = [data.stage, data.error_code].filter(Boolean).join(' / ');
+                const message = data.error || 'Data EWS belum tersedia.';
+                throw new Error(diagnostic ? `${message} (${diagnostic})` : message);
+            }
 
             const danger = data.status === 'BAHAYA';
             const indicator = document.getElementById('ewsIndicator');

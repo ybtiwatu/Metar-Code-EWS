@@ -1189,11 +1189,13 @@ def _parse_ews_metar(raw_metar):
 @app.route("/api/ews-status")
 def api_ews_status():
     """Predict thunderstorm risk using the latest four METAR observations."""
+    stage = "google_sheets"
     try:
         recent_rows = sheets_handler.get_recent_data(limit=4, bypass_cache=True)
         if len(recent_rows) < 4:
             return jsonify({"error": "Diperlukan minimal 4 baris METAR dari Google Sheets."}), 503
 
+        stage = "metar_parse"
         observations = []
         for row in recent_rows:
             raw_metar = row.get("metar")
@@ -1207,6 +1209,7 @@ def api_ews_status():
         if len(observations) < 4:
             return jsonify({"error": "Empat baris METAR valid diperlukan untuk membentuk fitur lag."}), 503
 
+        stage = "feature_build"
         current = observations[-1]
         feature_values = {
             "arah_angin_deg": current["arah_angin_deg"],
@@ -1228,6 +1231,7 @@ def api_ews_status():
             for feature_name, observation_key in lag_feature_sources.items():
                 feature_values[f"{feature_name}_lag_{lag}"] = previous[observation_key]
 
+        stage = "model_load"
         model, feature_order = _load_ews_assets()
         missing_features = [name for name in feature_order if name not in feature_values]
         if missing_features:
@@ -1237,6 +1241,7 @@ def api_ews_status():
             [[feature_values[name] for name in feature_order]],
             columns=feature_order,
         )
+        stage = "xgboost_prediction"
         probabilities = model.predict_proba(feature_frame)[0]
         class_index = list(model.classes_).index(1)
         danger_probability = float(probabilities[class_index])
@@ -1264,9 +1269,27 @@ def api_ews_status():
             "metar_terbaru": current["metar"],
             "history": history,
         })
+    except FileNotFoundError as error:
+        print(f"[EWS] stage={stage} missing model asset: {error}", file=sys.stderr)
+        return jsonify({
+            "error": "File model EWS tidak ditemukan di deployment.",
+            "error_code": "EWS_ASSET_MISSING",
+            "stage": stage,
+        }), 503
+    except ImportError as error:
+        print(f"[EWS] stage={stage} missing dependency: {error}", file=sys.stderr)
+        return jsonify({
+            "error": "Dependency EWS tidak tersedia pada runtime.",
+            "error_code": "EWS_DEPENDENCY_MISSING",
+            "stage": stage,
+        }), 503
     except Exception as error:
-        print(f"[EWS] Prediction failed: {error}", file=sys.stderr)
-        return jsonify({"error": "Prediksi EWS gagal. Periksa kredensial Sheets, model, dan format METAR."}), 503
+        print(f"[EWS] stage={stage} {type(error).__name__}: {error}", file=sys.stderr)
+        return jsonify({
+            "error": "Prediksi EWS gagal pada tahap pemrosesan.",
+            "error_code": type(error).__name__,
+            "stage": stage,
+        }), 503
 
 
 @app.route("/api/metar/<station_code>")
