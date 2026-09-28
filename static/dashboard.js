@@ -3192,16 +3192,50 @@ window.filterReportType = filterReportType;
         }
     }
 
+    function openEwsLogModal() {
+        const modal = document.getElementById('ewsLogModal');
+        const overlay = document.getElementById('ewsLogModalOverlay');
+        if (modal && overlay) {
+            modal.classList.add('active');
+            overlay.classList.add('active');
+            loadEwsLogs();
+        }
+    }
+
+    function closeEwsLogModal() {
+        const modal = document.getElementById('ewsLogModal');
+        const overlay = document.getElementById('ewsLogModalOverlay');
+        if (modal && overlay) {
+            modal.classList.remove('active');
+            overlay.classList.remove('active');
+        }
+    }
+
+    function toggleEwsLogModal() {
+        const modal = document.getElementById('ewsLogModal');
+        if (modal && modal.classList.contains('active')) {
+            closeEwsLogModal();
+        } else {
+            openEwsLogModal();
+        }
+    }
+
+    window.openEwsLogModal = openEwsLogModal;
+    window.closeEwsLogModal = closeEwsLogModal;
+    window.toggleEwsLogModal = toggleEwsLogModal;
+
     async function loadEwsLogs() {
         const rowsElement = document.getElementById('ewsLogRows');
         const summary = document.getElementById('ewsLogSummary');
+        const badge = document.getElementById('ewsAlarmBadge');
+        const fab = document.getElementById('ewsAlarmFab');
         if (!rowsElement || !summary) return;
 
         const query = new URLSearchParams({ limit: '100' });
-        const date = document.getElementById('ewsLogDate').value;
-        const station = document.getElementById('ewsLogStation').value.trim().toUpperCase();
+        const dateInput = document.getElementById('ewsLogDate');
+        const date = dateInput ? dateInput.value : '';
         if (date) query.set('date', date);
-        if (station) query.set('station', station);
+        query.set('station', 'WARR');
 
         summary.textContent = 'Memuat riwayat...';
         try {
@@ -3215,8 +3249,8 @@ window.filterReportType = filterReportType;
             if (!data.logs.length) {
                 const emptyRow = document.createElement('tr');
                 const emptyCell = document.createElement('td');
-                emptyCell.colSpan = 6;
-                emptyCell.textContent = 'Tidak ada peringatan untuk filter ini.';
+                emptyCell.colSpan = 5;
+                emptyCell.textContent = 'Tidak ada peringatan untuk filter tanggal ini.';
                 emptyRow.append(emptyCell);
                 rowsElement.append(emptyRow);
             } else {
@@ -3224,7 +3258,6 @@ window.filterReportType = filterReportType;
                     const row = document.createElement('tr');
                     const values = [
                         String(log.logged_at_utc || '').replace('T', ' ').replace(/Z$/, ' UTC'),
-                        log.station,
                         log.event_type === 'ANOMALY' ? 'ANOMALI' : 'PERUBAHAN STATUS',
                         log.previous_status
                             ? `${log.previous_status} -> ${log.model_status}`
@@ -3235,7 +3268,7 @@ window.filterReportType = filterReportType;
                     values.forEach((value, index) => {
                         const cell = document.createElement('td');
                         cell.textContent = value || '-';
-                        if (index === 5) cell.classList.add('metar-cell');
+                        if (index === 4) cell.classList.add('metar-cell');
                         row.append(cell);
                     });
                     row.dataset.status = log.model_status;
@@ -3243,11 +3276,27 @@ window.filterReportType = filterReportType;
                 }
             }
             summary.textContent = `${data.count} peringatan`;
+            if (badge) {
+                badge.textContent = data.count || 0;
+                if (data.count > 0) {
+                    badge.classList.remove('hidden');
+                } else {
+                    badge.classList.add('hidden');
+                }
+            }
+            if (fab) {
+                const hasDanger = (data.logs || []).some(l => l.model_status === 'BAHAYA');
+                if (hasDanger) {
+                    fab.classList.add('has-danger');
+                } else {
+                    fab.classList.remove('has-danger');
+                }
+            }
         } catch (error) {
             rowsElement.replaceChildren();
             const errorRow = document.createElement('tr');
             const errorCell = document.createElement('td');
-            errorCell.colSpan = 6;
+            errorCell.colSpan = 5;
             errorCell.textContent = error.message;
             errorRow.append(errorCell);
             rowsElement.append(errorRow);
@@ -3436,6 +3485,7 @@ window.filterReportType = filterReportType;
         const lstmRefresh = document.getElementById('lstmRefresh');
         if (lstmRefresh) lstmRefresh.addEventListener('click', loadLstmForecast);
         loadLstmForecast();
+
         const dateFilter = document.getElementById('ewsLogDate');
         const logFilters = document.getElementById('ewsLogFilters');
         if (dateFilter && !dateFilter.value) {
@@ -3445,6 +3495,29 @@ window.filterReportType = filterReportType;
             event.preventDefault();
             loadEwsLogs();
         });
+
+        const todayBtn = document.getElementById('ewsLogTodayBtn');
+        if (todayBtn) {
+            todayBtn.addEventListener('click', () => {
+                if (dateFilter) dateFilter.value = new Date().toISOString().slice(0, 10);
+                loadEwsLogs();
+            });
+        }
+
+        const allBtn = document.getElementById('ewsLogAllBtn');
+        if (allBtn) {
+            allBtn.addEventListener('click', () => {
+                if (dateFilter) dateFilter.value = '';
+                loadEwsLogs();
+            });
+        }
+
+        document.addEventListener('keydown', event => {
+            if (event.key === 'Escape') {
+                closeEwsLogModal();
+            }
+        });
+
         loadEwsLogs();
     });
 })();

@@ -2960,6 +2960,245 @@ body.rain-active::after {
 
 
 /* ============================================
+   FLOATING EWS ALARM BUTTON (FAB)
+   ============================================ */
+.ews-alarm-fab {
+  position: fixed;
+  bottom: 84px;
+  right: 24px;
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  color: #ffffff;
+  border: none;
+  border-radius: 50px;
+  box-shadow: 0 4px 15px rgba(245, 158, 11, 0.45);
+  font-family: 'Inter', sans-serif;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  overflow: visible;
+  white-space: nowrap;
+}
+
+.ews-alarm-fab:hover {
+  width: 145px;
+  transform: translateY(-5px);
+  box-shadow: 0 8px 25px rgba(245, 158, 11, 0.55);
+  background: linear-gradient(135deg, #fbbf24 0%, #d97706 100%);
+  padding: 0 18px;
+  justify-content: flex-start;
+  gap: 10px;
+}
+
+.ews-alarm-fab.has-danger {
+  background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%);
+  box-shadow: 0 4px 15px rgba(239, 68, 68, 0.5);
+  animation: ews-fab-pulse 2s infinite;
+}
+
+.ews-alarm-fab.has-danger:hover {
+  background: linear-gradient(135deg, #f87171 0%, #b91c1c 100%);
+}
+
+@keyframes ews-fab-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.6); }
+  70% { box-shadow: 0 0 0 12px rgba(239, 68, 68, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+}
+
+.ews-alarm-fab-icon {
+  font-size: 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ews-alarm-fab-text {
+  opacity: 0;
+  max-width: 0;
+  transition: all 0.3s ease;
+  pointer-events: none;
+}
+
+.ews-alarm-fab:hover .ews-alarm-fab-text {
+  opacity: 1;
+  max-width: 100px;
+  pointer-events: auto;
+}
+
+.ews-alarm-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  background: #ef4444;
+  color: #ffffff;
+  font-size: 0.68rem;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 2px 6px;
+  border: 2px solid #111827;
+  min-width: 20px;
+  text-align: center;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+}
+
+.ews-alarm-badge.hidden {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .ews-alarm-fab {
+    bottom: 80px;
+    right: 20px;
+  }
+  .ews-alarm-fab-text {
+    display: none !important;
+  }
+  .ews-alarm-fab:hover {
+    width: 48px;
+    padding: 0;
+    justify-content: center;
+  }
+}
+
+/* ============================================
+   EWS LOG MODAL
+   ============================================ */
+.ews-log-modal-overlay {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(4px);
+  z-index: 1200;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.ews-log-modal-overlay.active {
+  display: block;
+  opacity: 1;
+}
+
+.ews-log-modal {
+  display: none;
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.95);
+  width: 92%;
+  max-width: 980px;
+  max-height: 88vh;
+  background: var(--bg-card, #1e293b);
+  border: 1px solid var(--border-color, #334155);
+  border-radius: 16px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  z-index: 1210;
+  flex-direction: column;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.ews-log-modal.active {
+  display: flex;
+  transform: translate(-50%, -50%) scale(1);
+}
+
+.ews-log-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+  border-bottom: 1px solid var(--border-color, #334155);
+  color: #ffffff;
+}
+
+.ews-log-modal-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ews-log-modal-icon {
+  font-size: 1.5rem;
+}
+
+.ews-log-modal-title h3 {
+  margin: 0;
+  font-size: 1.15rem;
+  color: #f8fafc;
+}
+
+.ews-log-modal-title small {
+  color: var(--text-muted, #94a3b8);
+  font-size: 0.8rem;
+}
+
+.ews-log-header-right {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.ews-log-modal-close {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  font-size: 1.3rem;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+.ews-log-modal-close:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.ews-log-modal-filters {
+  padding: 14px 24px;
+  background: rgba(15, 23, 42, 0.6);
+  border-bottom: 1px solid var(--border-color, #334155);
+}
+
+.ews-log-modal-filters .ews-log-filters {
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.ews-date-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ews-filter-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ews-log-modal-body {
+  padding: 16px 24px 24px;
+  overflow-y: auto;
+  max-height: calc(88vh - 160px);
+}
+
+/* ============================================
    FLOATING HELP BUTTON (FAB)
    ============================================ */
 .help-fab {
