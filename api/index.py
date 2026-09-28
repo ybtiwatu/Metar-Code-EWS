@@ -1281,6 +1281,7 @@ def api_ews_status():
         return jsonify({
             "error": "Dependency EWS tidak tersedia pada runtime.",
             "error_code": "EWS_DEPENDENCY_MISSING",
+            "missing_module": getattr(error, "name", None),
             "stage": stage,
         }), 503
     except Exception as error:
