@@ -204,6 +204,68 @@
     </div>
 
     <!-- ============================================
+         FLOATING EWS ALARM BUTTON & MODAL
+         ============================================ -->
+    <button class="ews-alarm-fab" id="ewsAlarmFab" onclick="toggleEwsLogModal()" title="Riwayat Peringatan EWS (Alarm)">
+        <span class="ews-alarm-fab-icon">🔔</span>
+        <span class="ews-alarm-badge hidden" id="ewsAlarmBadge">0</span>
+        <span class="ews-alarm-fab-text">Alarm EWS</span>
+    </button>
+
+    <!-- EWS Log Modal Overlay -->
+    <div class="ews-log-modal-overlay" id="ewsLogModalOverlay" onclick="closeEwsLogModal()"></div>
+
+    <!-- EWS Log Modal Content -->
+    <div class="ews-log-modal" id="ewsLogModal" role="dialog" aria-labelledby="ewsLogModalTitle" aria-modal="true">
+        <div class="ews-log-modal-header">
+            <div class="ews-log-modal-title">
+                <span class="ews-log-modal-icon">🔔</span>
+                <div>
+                    <h3 id="ewsLogModalTitle">Riwayat Peringatan EWS</h3>
+                    <small>Stasiun WARR · Bandara Juanda</small>
+                </div>
+            </div>
+            <div class="ews-log-header-right">
+                <span class="ews-updated" id="ewsLogSummary">Memuat riwayat...</span>
+                <button class="ews-log-modal-close" onclick="closeEwsLogModal()" title="Tutup">✕</button>
+            </div>
+        </div>
+
+        <div class="ews-log-modal-filters">
+            <form class="ews-log-filters" id="ewsLogFilters">
+                <div class="form-group ews-date-group">
+                    <label for="ewsLogDate">Tanggal (UTC)</label>
+                    <input class="form-input" type="date" id="ewsLogDate">
+                </div>
+                <div class="ews-filter-actions">
+                    <button class="btn btn-primary" type="submit">Filter Tanggal</button>
+                    <button class="btn btn-outline" type="button" id="ewsLogTodayBtn">Hari Ini</button>
+                    <button class="btn btn-outline" type="button" id="ewsLogAllBtn">Semua</button>
+                </div>
+            </form>
+        </div>
+
+        <div class="ews-log-modal-body">
+            <div class="table-responsive ews-log-table-wrap">
+                <table class="data-table modern-table ews-log-table">
+                    <thead>
+                        <tr>
+                            <th>Waktu UTC</th>
+                            <th>Event</th>
+                            <th>Status EWS</th>
+                            <th>Probabilitas Bahaya</th>
+                            <th>METAR Raw</th>
+                        </tr>
+                    </thead>
+                    <tbody id="ewsLogRows">
+                        <tr><td colspan="5">Memuat riwayat peringatan...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================
          FLOATING HELP BUTTON & MODAL
          ============================================ -->
     {% block help_modal %}

@@ -97,42 +97,6 @@
     </div>
 </section>
 
-<section class="card ews-log-card fade-in" id="ewsLogPanel">
-    <div class="card-header">
-        <h3 class="card-title"><span class="icon">🔔</span> Riwayat Peringatan EWS</h3>
-        <span class="ews-updated" id="ewsLogSummary">Memuat riwayat...</span>
-    </div>
-    <form class="ews-log-filters" id="ewsLogFilters">
-        <div class="form-group">
-            <label for="ewsLogDate">Tanggal (UTC)</label>
-            <input class="form-input" type="date" id="ewsLogDate">
-        </div>
-        <div class="form-group">
-            <label for="ewsLogStation">Stasiun ICAO</label>
-            <input class="form-input" type="text" id="ewsLogStation" maxlength="4"
-                pattern="[A-Za-z]{4}" placeholder="Semua stasiun">
-        </div>
-        <button class="btn btn-primary" type="submit">Tampilkan</button>
-    </form>
-    <div class="table-responsive ews-log-table-wrap">
-        <table class="data-table modern-table ews-log-table">
-            <thead>
-                <tr>
-                    <th>Waktu UTC</th>
-                    <th>ICAO</th>
-                    <th>Event</th>
-                    <th>Status</th>
-                    <th>Probabilitas bahaya</th>
-                    <th>METAR</th>
-                </tr>
-            </thead>
-            <tbody id="ewsLogRows">
-                <tr><td colspan="6">Memuat riwayat peringatan...</td></tr>
-            </tbody>
-        </table>
-    </div>
-</section>
-
 <!-- System Status Panel -->
 <div class="card system-status-card fade-in" style="animation-delay:0.03s">
     <div class="card-header">
