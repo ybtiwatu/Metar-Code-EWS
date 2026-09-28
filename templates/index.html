@@ -59,109 +59,111 @@
     </div>
 </div>
 
-<!-- ========== METAR HERO SECTION ========== -->
+<!-- ========== DATA OBSERVASI CUACA (METAR) UNIFIED CARD ========== -->
 {% if latest %}
-<div class="metar-hero fade-in" id="metarHero" style="animation-delay:0.04s">
-
-    <!-- Raw METAR Panel (Collapsible, Initially Closed) -->
-    <div class="metar-raw-panel collapsed {% if latest.status == 'danger' %}status-danger{% elif latest.status == 'warning' %}status-warning{% endif %}"
-        id="metarRawPanel">
-        <div class="metar-raw-header">
-            <div class="panel-title">
-                <span>📡 RAW METAR DATA</span>
-                <span class="metar-raw-snippet" id="metarRawSnippet" title="{{ latest.metar.strip() }}">
-                    {{ latest.metar.strip() if latest.metar.strip().endswith('=') else latest.metar.strip() + '=' }}
-                </span>
-            </div>
-            <button type="button" class="btn btn-sm btn-outline metar-raw-collapse-btn" id="metarRawCollapseBtn" onclick="toggleRawMetar()" aria-expanded="false" title="Buka / Ciutkan Raw METAR">
-                <span class="metar-raw-collapse-icon">▼</span>
-                <span class="metar-raw-collapse-text">Buka Raw Data</span>
+<section class="card metar-main-card fade-in" id="metarMainCard" aria-live="polite" style="animation-delay:0.04s">
+    <div class="card-header metar-main-header">
+        <div class="metar-main-title-group">
+            <h3 class="card-title"><span class="icon">📡</span> Observasi Cuaca METAR</h3>
+            <span class="metar-raw-snippet" id="metarRawSnippet" title="{{ latest.metar.strip() }}">
+                {{ latest.metar.strip() if latest.metar.strip().endswith('=') else latest.metar.strip() + '=' }}
+            </span>
+        </div>
+        <div class="metar-header-actions">
+            <button type="button" class="btn btn-sm btn-outline metar-collapse-btn" id="metarCollapseBtn" onclick="toggleMetarMainCard()" aria-expanded="false" title="Ciutkan / Buka Data METAR">
+                <span class="metar-collapse-icon">▼</span>
+                <span class="metar-collapse-text">Buka Data METAR</span>
             </button>
         </div>
-        <div class="metar-raw-collapsible-content collapsed" id="metarRawCollapsibleContent" style="display: none;">
-            <div class="metar-raw-code" id="metarRawCode">
-                {{ latest.metar.strip() if latest.metar.strip().endswith('=') else latest.metar.strip() + '=' }}
-                {% if latest.report_type == 'COR' or 'COR' in latest.metar or 'CCA' in latest.metar %}
-                <span class="badge"
-                    style="background-color: #f59e0b; color: #1e293b; margin-left: 10px; font-size: 0.75rem; padding: 4px 8px; vertical-align: middle;">⚠️
-                    COR</span>
-                {% elif latest.report_type == 'AMD' or 'AMD' in latest.metar %}
-                <span class="badge"
-                    style="background-color: #3b82f6; color: #ffffff; margin-left: 10px; font-size: 0.75rem; padding: 4px 8px; vertical-align: middle;">⚠️
-                    AMD</span>
-                {% elif latest.report_type == 'SPECI' or 'SPECI' in latest.metar %}
-                <span class="badge"
-                    style="background-color: #ef4444; color: #ffffff; margin-left: 10px; font-size: 0.75rem; padding: 4px 8px; vertical-align: middle;">⚠️
-                    SPECI</span>
-                {% endif %}
-            </div>
-            <div class="metar-actions">
-                <button class="btn btn-sm btn-outline" onclick="copyMetar()">📋 Copy</button>
-                <button class="btn btn-sm btn-outline" onclick="location.reload()">🔄 Refresh</button>
-                <span class="copy-feedback" id="metarCopyFeedback">Copied!</span>
-            </div>
-            <!-- Validation Display -->
-            <div id="metarValidation" style="margin-top: 12px; font-size: 0.85rem; font-family: 'Inter', sans-serif;">
-                <!-- Populated by dashboard.js -->
-            </div>
-        </div>
     </div>
 
-    <!-- Decoded Parameters Panel -->
-    <div class="metar-decoded-panel" id="decodedPanel">
-        <div class="param-card">
-            <span class="param-label">🌡️ Temperature</span>
-            <span class="param-value" id="paramTemp">--</span>
-            <span class="param-unit">°C</span>
-        </div>
-        <div class="param-card">
-            <span class="param-label">💧 Dew Point</span>
-            <span class="param-value" id="paramDewpoint">--</span>
-            <span class="param-unit">°C</span>
-        </div>
-        <div class="param-card">
-            <span class="param-label">🌬️ Wind</span>
-            <span class="param-value" id="paramWind">--</span>
-            <span class="param-unit" id="paramWindDetail"></span>
-        </div>
-        <div class="param-card">
-            <span class="param-label">👁️ Visibility</span>
-            <span class="param-value" id="paramVis">--</span>
-            <span class="param-unit" id="paramVisUnit">m</span>
-            <div class="vis-bar">
-                <div class="vis-bar-fill" id="visBar" style="width:100%"></div>
+    <div class="metar-collapsible-content collapsed" id="metarCollapsibleContent" style="display: none;">
+        <div class="metar-hero" id="metarHero">
+            <!-- Raw METAR Sub-panel -->
+            <div class="metar-raw-panel {% if latest.status == 'danger' %}status-danger{% elif latest.status == 'warning' %}status-warning{% endif %}"
+                id="metarRawPanel">
+                <div class="panel-title">📡 RAW METAR CODE</div>
+                <div class="metar-raw-code" id="metarRawCode">
+                    {{ latest.metar.strip() if latest.metar.strip().endswith('=') else latest.metar.strip() + '=' }}
+                    {% if latest.report_type == 'COR' or 'COR' in latest.metar or 'CCA' in latest.metar %}
+                    <span class="badge"
+                        style="background-color: #f59e0b; color: #1e293b; margin-left: 10px; font-size: 0.75rem; padding: 4px 8px; vertical-align: middle;">⚠️
+                        COR</span>
+                    {% elif latest.report_type == 'AMD' or 'AMD' in latest.metar %}
+                    <span class="badge"
+                        style="background-color: #3b82f6; color: #ffffff; margin-left: 10px; font-size: 0.75rem; padding: 4px 8px; vertical-align: middle;">⚠️
+                        AMD</span>
+                    {% elif latest.report_type == 'SPECI' or 'SPECI' in latest.metar %}
+                    <span class="badge"
+                        style="background-color: #ef4444; color: #ffffff; margin-left: 10px; font-size: 0.75rem; padding: 4px 8px; vertical-align: middle;">⚠️
+                        SPECI</span>
+                    {% endif %}
+                </div>
+                <div class="metar-actions">
+                    <button class="btn btn-sm btn-outline" onclick="copyMetar()">📋 Copy</button>
+                    <button class="btn btn-sm btn-outline" onclick="location.reload()">🔄 Refresh</button>
+                    <span class="copy-feedback" id="metarCopyFeedback">Copied!</span>
+                </div>
+                <!-- Validation Display -->
+                <div id="metarValidation" style="margin-top: 12px; font-size: 0.85rem; font-family: 'Inter', sans-serif;">
+                    <!-- Populated by dashboard.js -->
+                </div>
+            </div>
+
+            <!-- Decoded Parameters Panel (8 Cards) -->
+            <div class="metar-decoded-panel" id="decodedPanel">
+                <div class="param-card">
+                    <span class="param-label">🌡️ Temperature</span>
+                    <span class="param-value" id="paramTemp">--</span>
+                    <span class="param-unit">°C</span>
+                </div>
+                <div class="param-card">
+                    <span class="param-label">💧 Dew Point</span>
+                    <span class="param-value" id="paramDewpoint">--</span>
+                    <span class="param-unit">°C</span>
+                </div>
+                <div class="param-card">
+                    <span class="param-label">🌬️ Wind</span>
+                    <span class="param-value" id="paramWind">--</span>
+                    <span class="param-unit" id="paramWindDetail"></span>
+                </div>
+                <div class="param-card">
+                    <span class="param-label">👁️ Visibility</span>
+                    <span class="param-value" id="paramVis">--</span>
+                    <span class="param-unit" id="paramVisUnit">m</span>
+                    <div class="vis-bar">
+                        <div class="vis-bar-fill" id="visBar" style="width:100%"></div>
+                    </div>
+                </div>
+                <div class="param-card">
+                    <span class="param-label">📊 QNH</span>
+                    <span class="param-value" id="paramQNH">--</span>
+                    <span class="param-unit">hPa</span>
+                </div>
+                <div class="param-card">
+                    <span class="param-label">☁️ Cloud</span>
+                    <span class="param-value" id="paramCloud" style="font-size:1.1rem">--</span>
+                    <span class="param-unit" id="paramCloudExtra"></span>
+                </div>
+                <div class="param-card">
+                    <span class="param-label">🌩️ Weather</span>
+                    <span class="param-value" id="paramWeather" style="font-size:1.1rem">--</span>
+                </div>
+                <div class="param-card">
+                    <span class="param-label">🕐 Obs Time (UTC)</span>
+                    <span class="param-value" id="paramTime" style="font-size:1.2rem">--:-- UTC</span>
+                </div>
             </div>
         </div>
-        <div class="param-card">
-            <span class="param-label">📊 QNH</span>
-            <span class="param-value" id="paramQNH">--</span>
-            <span class="param-unit">hPa</span>
-        </div>
-        <div class="param-card">
-            <span class="param-label">☁️ Cloud</span>
-            <span class="param-value" id="paramCloud" style="font-size:1.1rem">--</span>
-            <span class="param-unit" id="paramCloudExtra"></span>
-        </div>
-        <div class="param-card">
-            <span class="param-label">🌩️ Weather</span>
-            <span class="param-value" id="paramWeather" style="font-size:1.1rem">--</span>
-        </div>
-        <div class="param-card">
-            <span class="param-label">🕐 Obs Time (UTC)</span>
-            <span class="param-value" id="paramTime" style="font-size:1.2rem">--:-- UTC</span>
+
+        <!-- Integrated Weather Narrative -->
+        <div class="metar-narrative-section">
+            <h4 class="narrative-title"><span class="icon">📝</span> Narasi Cuaca</h4>
+            <div class="narrative-display" id="narrativeDisplay">{% if narrative %}{{ narrative }}{% else %}Waiting for data update...{% endif %}</div>
         </div>
     </div>
-
-</div>
+</section>
 {% endif %}
-
-<div class="card fade-in" style="animation-delay:0.06s">
-    <div class="card-header">
-        <h3 class="card-title"><span class="icon">📝</span> Narasi Cuaca</h3>
-    </div>
-    <div class="narrative-display" id="narrativeDisplay">{% if narrative %}{{ narrative }}{% else %}Waiting for data
-        update...{% endif %}</div>
-</div>
 
 <section class="card ews-panel fade-in" id="ewsPanel" aria-live="polite" style="animation-delay:0.08s">
     <div class="card-header ews-header-flex">

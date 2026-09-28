@@ -3541,23 +3541,25 @@ window.filterReportType = filterReportType;
     }
     window.toggleLstmPanel = toggleLstmPanel;
 
-    function toggleRawMetar() {
-        const panel = document.getElementById('metarRawPanel');
-        const content = document.getElementById('metarRawCollapsibleContent');
-        const btn = document.getElementById('metarRawCollapseBtn');
-        const icon = btn ? btn.querySelector('.metar-raw-collapse-icon') : null;
-        const text = btn ? btn.querySelector('.metar-raw-collapse-text') : null;
+    function toggleMetarMainCard() {
+        const card = document.getElementById('metarMainCard');
+        const content = document.getElementById('metarCollapsibleContent');
+        const btn = document.getElementById('metarCollapseBtn');
+        const icon = btn ? btn.querySelector('.metar-collapse-icon') : null;
+        const text = btn ? btn.querySelector('.metar-collapse-text') : null;
         if (!content) return;
 
         const isCollapsed = content.classList.toggle('collapsed');
-        if (panel) panel.classList.toggle('collapsed', isCollapsed);
+        content.style.display = isCollapsed ? 'none' : 'block';
+        if (card) card.classList.toggle('collapsed', isCollapsed);
         if (btn) {
             btn.setAttribute('aria-expanded', !isCollapsed);
             if (icon) icon.textContent = isCollapsed ? '▼' : '▲';
-            if (text) text.textContent = isCollapsed ? 'Buka Raw Data' : 'Ciutkan';
+            if (text) text.textContent = isCollapsed ? 'Buka Data METAR' : 'Ciutkan';
         }
     }
-    window.toggleRawMetar = toggleRawMetar;
+    window.toggleMetarMainCard = toggleMetarMainCard;
+    window.toggleRawMetar = toggleMetarMainCard;
 
     document.addEventListener('DOMContentLoaded', () => {
         loadEwsStatus();
