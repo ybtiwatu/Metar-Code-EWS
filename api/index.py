@@ -1302,6 +1302,14 @@ def api_ews_status():
             if is_danger else
             "Model tidak mendeteksi potensi badai guntur pada observasi ini. Tetap pantau perubahan cuaca."
         )
+        alert_log = sheets_handler.record_ews_alert({
+            "station": recent_rows[-1].get("station") or current.get("station") or "WARR",
+            "model_status": status,
+            "danger_probability_percent": round(danger_probability * 100, 2),
+            "confidence_percent": round(confidence * 100, 2),
+            "metar_raw": current["metar"],
+            "description": description,
+        })
 
         return jsonify({
             "status": status,
@@ -1310,6 +1318,7 @@ def api_ews_status():
             "deskripsi": description,
             "metar_terbaru": current["metar"],
             "history": history,
+            "alert_log": alert_log,
             "explanation": {
                 "method": "XGBoost TreeSHAP",
                 "scale": "raw_margin_log_odds",
@@ -1340,6 +1349,28 @@ def api_ews_status():
             "error_code": type(error).__name__,
             "stage": stage,
         }), 503
+
+
+@app.route("/api/ews-logs")
+def api_ews_alert_logs():
+    date = request.args.get("date", "").strip()
+    station = request.args.get("station", "").strip().upper()
+    if date and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date):
+        return jsonify({"error": "Tanggal harus berformat YYYY-MM-DD."}), 400
+    if station and not re.fullmatch(r"[A-Z]{4}", station):
+        return jsonify({"error": "ICAO harus terdiri dari 4 huruf."}), 400
+
+    try:
+        limit = int(request.args.get("limit", 100))
+    except ValueError:
+        return jsonify({"error": "Limit harus berupa angka."}), 400
+
+    logs = sheets_handler.get_ews_alert_logs(date=date or None, station=station or None, limit=limit)
+    return jsonify({
+        "logs": logs,
+        "count": len(logs),
+        "filters": {"date": date or None, "station": station or None},
+    })
 
 
 @app.route("/api/metar/<station_code>")

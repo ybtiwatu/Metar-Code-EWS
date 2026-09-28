@@ -3192,6 +3192,81 @@ window.filterReportType = filterReportType;
         }
     }
 
-    document.addEventListener('DOMContentLoaded', loadEwsStatus);
+    async function loadEwsLogs() {
+        const rowsElement = document.getElementById('ewsLogRows');
+        const summary = document.getElementById('ewsLogSummary');
+        if (!rowsElement || !summary) return;
+
+        const query = new URLSearchParams({ limit: '100' });
+        const date = document.getElementById('ewsLogDate').value;
+        const station = document.getElementById('ewsLogStation').value.trim().toUpperCase();
+        if (date) query.set('date', date);
+        if (station) query.set('station', station);
+
+        summary.textContent = 'Memuat riwayat...';
+        try {
+            const response = await fetch(`/api/ews-logs?${query.toString()}`, {
+                headers: { Accept: 'application/json' }
+            });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || 'Riwayat peringatan gagal dimuat.');
+
+            rowsElement.replaceChildren();
+            if (!data.logs.length) {
+                const emptyRow = document.createElement('tr');
+                const emptyCell = document.createElement('td');
+                emptyCell.colSpan = 6;
+                emptyCell.textContent = 'Tidak ada peringatan untuk filter ini.';
+                emptyRow.append(emptyCell);
+                rowsElement.append(emptyRow);
+            } else {
+                for (const log of data.logs) {
+                    const row = document.createElement('tr');
+                    const values = [
+                        String(log.logged_at_utc || '').replace('T', ' ').replace(/Z$/, ' UTC'),
+                        log.station,
+                        log.event_type === 'ANOMALY' ? 'ANOMALI' : 'PERUBAHAN STATUS',
+                        log.previous_status
+                            ? `${log.previous_status} -> ${log.model_status}`
+                            : log.model_status,
+                        `${Number(log.danger_probability_percent).toFixed(2)}%`,
+                        log.metar_raw
+                    ];
+                    values.forEach((value, index) => {
+                        const cell = document.createElement('td');
+                        cell.textContent = value || '-';
+                        if (index === 5) cell.classList.add('metar-cell');
+                        row.append(cell);
+                    });
+                    row.dataset.status = log.model_status;
+                    rowsElement.append(row);
+                }
+            }
+            summary.textContent = `${data.count} peringatan`;
+        } catch (error) {
+            rowsElement.replaceChildren();
+            const errorRow = document.createElement('tr');
+            const errorCell = document.createElement('td');
+            errorCell.colSpan = 6;
+            errorCell.textContent = error.message;
+            errorRow.append(errorCell);
+            rowsElement.append(errorRow);
+            summary.textContent = 'Gagal memuat';
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        loadEwsStatus();
+        const dateFilter = document.getElementById('ewsLogDate');
+        const logFilters = document.getElementById('ewsLogFilters');
+        if (dateFilter && !dateFilter.value) {
+            dateFilter.value = new Date().toISOString().slice(0, 10);
+        }
+        if (logFilters) logFilters.addEventListener('submit', event => {
+            event.preventDefault();
+            loadEwsLogs();
+        });
+        loadEwsLogs();
+    });
 })();
 

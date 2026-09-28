@@ -421,6 +421,138 @@ class GoogleSheetHandler:
             print(f"[SHEETS] Error getting wind logs: {e}")
             return []
 
+    def _get_ews_alert_worksheet(self):
+        if not self.client:
+            self._authenticate()
+        if not self.client:
+            return None
+
+        spreadsheet = self.client.open_by_key(SPREADSHEET_ID)
+        try:
+            return spreadsheet.worksheet("EWSAlertLog")
+        except gspread.WorksheetNotFound:
+            worksheet = spreadsheet.add_worksheet(
+                title="EWSAlertLog",
+                rows="10000",
+                cols="10",
+            )
+            worksheet.append_row([
+                "logged_at_utc",
+                "station",
+                "event_type",
+                "previous_status",
+                "model_status",
+                "danger_probability_percent",
+                "confidence_percent",
+                "metar_raw",
+                "description",
+            ], value_input_option="RAW")
+            return worksheet
+
+    def record_ews_alert(self, event: dict) -> dict:
+        """Persist a new danger observation or a model-status transition once."""
+        try:
+            worksheet = self._get_ews_alert_worksheet()
+            if worksheet is None:
+                return {"logged": False, "reason": "sheets_unavailable"}
+
+            station = str(event.get("station", "")).strip().upper()
+            model_status = str(event.get("model_status", "")).strip().upper()
+            metar_raw = str(event.get("metar_raw", "")).strip()
+            records = worksheet.get_all_records()
+            previous_record = next(
+                (row for row in reversed(records)
+                 if str(row.get("station", "")).strip().upper() == station),
+                None,
+            )
+            previous_status = (
+                str(previous_record.get("model_status", "")).strip().upper()
+                if previous_record else None
+            )
+            status_changed = previous_status is not None and model_status != previous_status
+            is_anomaly = model_status == "BAHAYA"
+
+            if not is_anomaly and not status_changed:
+                return {"logged": False, "reason": "no_alert", "previous_status": previous_status}
+
+            if (
+                previous_record
+                and str(previous_record.get("metar_raw", "")).strip() == metar_raw
+                and str(previous_record.get("model_status", "")).strip().upper() == model_status
+            ):
+                return {"logged": False, "reason": "duplicate", "previous_status": previous_status}
+
+            event_type = "ANOMALY" if is_anomaly else "STATUS_CHANGE"
+            logged_at = datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+            worksheet.append_row([
+                logged_at,
+                station,
+                event_type,
+                previous_status or "",
+                model_status,
+                event.get("danger_probability_percent", 0),
+                event.get("confidence_percent", 0),
+                metar_raw,
+                event.get("description", ""),
+            ], value_input_option="RAW")
+            return {
+                "logged": True,
+                "event_type": event_type,
+                "previous_status": previous_status,
+            }
+        except Exception as error:
+            print(f"[SHEETS] EWS alert log failed: {error}", file=sys.stderr)
+            return {"logged": False, "reason": "sheets_error"}
+
+    def get_ews_alert_logs(
+        self,
+        date: str = None,
+        station: str = None,
+        limit: int = 100,
+    ) -> list:
+        """Read EWS history, optionally filtered by UTC date and ICAO station."""
+        try:
+            worksheet = self._get_ews_alert_worksheet()
+            if worksheet is None:
+                return []
+
+            station_filter = str(station or "").strip().upper()
+            logs = []
+            for row in worksheet.get_all_records():
+                logged_at = str(row.get("logged_at_utc", ""))
+                row_station = str(row.get("station", "")).strip().upper()
+                if station_filter and row_station != station_filter:
+                    continue
+                if date and not logged_at.startswith(date):
+                    continue
+
+                logs.append({
+                    "logged_at_utc": logged_at,
+                    "station": row_station,
+                    "event_type": str(row.get("event_type", "")),
+                    "previous_status": str(row.get("previous_status", "")),
+                    "model_status": str(row.get("model_status", "")),
+                    "danger_probability_percent": self._as_float(row.get("danger_probability_percent")),
+                    "confidence_percent": self._as_float(row.get("confidence_percent")),
+                    "metar_raw": str(row.get("metar_raw", "")),
+                    "description": str(row.get("description", "")),
+                })
+
+            logs.sort(key=lambda row: row["logged_at_utc"], reverse=True)
+            return logs[:max(1, min(int(limit), 500))]
+        except gspread.WorksheetNotFound:
+            return []
+        except Exception as error:
+            print(f"[SHEETS] EWS alert log read failed: {error}", file=sys.stderr)
+            return []
+
+    @staticmethod
+    def _as_float(value):
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
     def get_wind_logs_by_metar(self, limit: int = 50) -> list:
         """Group wind logs by METAR timestamp untuk forensics view"""
         logs = self.get_wind_logs(limit=limit * 2)  # Ambil lebih banyak karena akan digroup

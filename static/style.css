@@ -203,6 +203,40 @@
   height: 330px;
 }
 
+.ews-log-filters {
+  display: grid;
+  grid-template-columns: minmax(180px, 240px) minmax(150px, 200px) auto;
+  gap: var(--space-md);
+  align-items: end;
+  margin: var(--space-md) 0;
+}
+
+.ews-log-filters .form-group { margin: 0; }
+
+.ews-log-filters .btn {
+  min-height: 42px;
+  white-space: nowrap;
+}
+
+.ews-log-table-wrap {
+  overflow-x: auto;
+}
+
+.ews-log-table {
+  width: 100%;
+  min-width: 760px;
+  margin: 0;
+}
+
+.ews-log-table .metar-cell {
+  max-width: 520px;
+  overflow-wrap: anywhere;
+}
+
+.ews-log-table tbody tr[data-status="BAHAYA"] td {
+  background: rgba(220, 38, 38, 0.08);
+}
+
 @keyframes ews-danger-pulse {
   50% { box-shadow: 0 0 0 5px rgba(220, 38, 38, 0.12); }
 }
@@ -210,6 +244,7 @@
 @media (max-width: 700px) {
   .ews-overview { gap: var(--space-md); }
   .ews-chart-frame { height: 210px; }
+  .ews-log-filters { grid-template-columns: 1fr; }
 }
 
 html {
