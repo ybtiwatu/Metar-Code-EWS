@@ -3460,6 +3460,8 @@ window.filterReportType = filterReportType;
         if (!panel) return;
         const state = document.getElementById('lstmState');
         const errorBox = document.getElementById('lstmError');
+        const refreshBtn = document.getElementById('lstmRefresh');
+        if (refreshBtn) refreshBtn.classList.add('rotating');
         if (state) {
             state.dataset.state = 'loading';
             state.textContent = 'MEMUAT';
@@ -3507,8 +3509,33 @@ window.filterReportType = filterReportType;
             }
         } finally {
             clearTimeout(timeoutId);
+            if (refreshBtn) refreshBtn.classList.remove('rotating');
         }
     }
+
+    function toggleLstmPanel() {
+        const content = document.getElementById('lstmCollapsibleContent');
+        const btn = document.getElementById('lstmCollapseBtn');
+        const icon = btn ? btn.querySelector('.lstm-collapse-icon') : null;
+        const text = btn ? btn.querySelector('.lstm-collapse-text') : null;
+        if (!content) return;
+
+        const isCollapsed = content.classList.toggle('collapsed');
+        if (btn) {
+            btn.setAttribute('aria-expanded', !isCollapsed);
+            if (icon) icon.textContent = isCollapsed ? '▼' : '▲';
+            if (text) text.textContent = isCollapsed ? 'Buka Prediksi' : 'Ciutkan';
+        }
+
+        if (!isCollapsed && typeof lstmCharts !== 'undefined') {
+            setTimeout(() => {
+                Object.values(lstmCharts).forEach(chart => {
+                    if (chart && chart.resize) chart.resize();
+                });
+            }, 60);
+        }
+    }
+    window.toggleLstmPanel = toggleLstmPanel;
 
     document.addEventListener('DOMContentLoaded', () => {
         loadEwsStatus();

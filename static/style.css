@@ -338,6 +338,37 @@
   gap: var(--space-sm);
 }
 
+.lstm-refresh-btn.rotating {
+  animation: ews-spin 0.8s linear infinite;
+  pointer-events: none;
+}
+
+.lstm-collapse-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 5px 12px;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.lstm-collapse-btn:hover {
+  background: var(--bg-surface-alt);
+  transform: translateY(-1px);
+}
+
+.lstm-collapsible-content {
+  transition: opacity 0.25s ease;
+}
+
+.lstm-collapsible-content.collapsed {
+  display: none !important;
+}
+
 .lstm-state {
   padding: 5px 9px;
   border-radius: var(--radius-full);
@@ -386,18 +417,150 @@
   font-size: 0.8rem;
 }
 
-.lstm-metrics-wrap { overflow-x: auto; }
+/* ============================================= */
+/* LSTM PREDICTION METRICS TABLE (STRUCTURED GRID) */
+/* ============================================= */
+
+.lstm-metrics-wrap {
+  overflow-x: auto;
+  margin: 16px 0;
+  border: 1.5px solid #cbd5e1;
+  border-radius: var(--radius-md, 8px);
+  background: var(--bg-card, #ffffff);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+}
+
+[data-theme="dark"] .lstm-metrics-wrap {
+  border-color: #334155;
+  background: #0f172a;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+}
 
 .lstm-metrics-table {
   width: 100%;
-  min-width: 640px;
+  min-width: 680px;
   margin: 0;
+  border-collapse: collapse;
+  border-spacing: 0;
 }
 
-.lstm-predicted-value-30m { color: #38bdf8 !important; font-weight: 700; }
-.lstm-predicted-value { color: #f59e0b !important; font-weight: 700; }
-.lstm-delta-up { color: #f87171 !important; font-weight: 600; }
-.lstm-delta-down { color: #34d399 !important; font-weight: 600; }
+.lstm-metrics-table thead th {
+  background: #1e293b !important;
+  color: #f8fafc !important;
+  font-weight: 700;
+  font-size: 0.78rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 12px 16px;
+  border: none;
+  border-bottom: 2px solid #334155;
+  border-right: 1px solid #334155;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.lstm-metrics-table thead th:last-child {
+  border-right: none;
+}
+
+[data-theme="dark"] .lstm-metrics-table thead th {
+  background: #1e293b !important;
+  color: #38bdf8 !important;
+  border-bottom: 2px solid #475569;
+  border-right: 1px solid #334155;
+}
+
+.lstm-metrics-table tbody td {
+  padding: 12px 16px;
+  border: none;
+  border-bottom: 1px solid #e2e8f0;
+  border-right: 1px solid #e2e8f0;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.86rem;
+  color: var(--text-primary);
+  vertical-align: middle;
+  background: transparent;
+}
+
+[data-theme="dark"] .lstm-metrics-table tbody td {
+  border-bottom: 1px solid #1e293b;
+  border-right: 1px solid #1e293b;
+}
+
+.lstm-metrics-table tbody td:first-child {
+  font-family: inherit;
+  font-weight: 600;
+  color: var(--text-primary);
+  background: rgba(248, 250, 252, 0.7);
+}
+
+[data-theme="dark"] .lstm-metrics-table tbody td:first-child {
+  background: rgba(30, 41, 59, 0.4);
+}
+
+.lstm-metrics-table tbody td:last-child {
+  border-right: none;
+}
+
+.lstm-metrics-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.lstm-metrics-table tbody tr:nth-child(even) {
+  background: #f8fafc;
+}
+
+[data-theme="dark"] .lstm-metrics-table tbody tr:nth-child(even) {
+  background: rgba(30, 41, 59, 0.25);
+}
+
+.lstm-metrics-table tbody tr:hover {
+  background: rgba(124, 58, 237, 0.05);
+}
+
+[data-theme="dark"] .lstm-metrics-table tbody tr:hover {
+  background: rgba(124, 58, 237, 0.12);
+}
+
+.lstm-predicted-value-30m {
+  color: #0284c7 !important;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+[data-theme="dark"] .lstm-predicted-value-30m {
+  color: #38bdf8 !important;
+}
+
+.lstm-predicted-value {
+  color: #d97706 !important;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+[data-theme="dark"] .lstm-predicted-value {
+  color: #fbbf24 !important;
+}
+
+.lstm-delta-up {
+  color: #dc2626 !important;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+[data-theme="dark"] .lstm-delta-up {
+  color: #f87171 !important;
+}
+
+.lstm-delta-down {
+  color: #16a34a !important;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+[data-theme="dark"] .lstm-delta-down {
+  color: #34d399 !important;
+}
 
 .lstm-charts {
   display: grid;

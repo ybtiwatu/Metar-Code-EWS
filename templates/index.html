@@ -75,37 +75,43 @@
         </div>
         <div class="lstm-header-actions">
             <span class="lstm-state" id="lstmState" data-state="loading">MENUNGGU</span>
-            <button class="btn btn-sm btn-outline" id="lstmRefresh" type="button" title="Muat ulang prediksi">↻</button>
+            <button class="btn btn-sm btn-outline lstm-refresh-btn" id="lstmRefresh" type="button" title="Muat ulang prediksi">↻</button>
+            <button type="button" class="btn btn-sm btn-outline lstm-collapse-btn" id="lstmCollapseBtn" onclick="toggleLstmPanel()" aria-expanded="true" title="Ciutkan / Buka Prediksi">
+                <span class="lstm-collapse-icon">▲</span>
+                <span class="lstm-collapse-text">Ciutkan</span>
+            </button>
         </div>
     </div>
-    <div class="lstm-error hidden" id="lstmError" role="status"></div>
-    <div class="lstm-forecast-meta">
-        <span>Observasi terakhir <strong id="lstmActualTime">--</strong></span>
-        <span>Prediksi +30 menit <strong id="lstmForecastTime30m">--</strong></span>
-        <span>Prediksi +1 jam <strong id="lstmForecastTime1h">--</strong></span>
-        <strong id="lstmForecastTime" style="display:none">--</strong>
-    </div>
-    <div class="table-responsive lstm-metrics-wrap">
-        <table class="data-table lstm-metrics-table">
-            <thead>
-                <tr>
-                    <th>Parameter</th>
-                    <th>Aktual</th>
-                    <th>Prediksi +30 Menit</th>
-                    <th>Prediksi +1 Jam</th>
-                    <th>Perubahan (+1j)</th>
-                </tr>
-            </thead>
-            <tbody id="lstmMetrics">
-                <tr><td colspan="5">Menunggu layanan LSTM...</td></tr>
-            </tbody>
-        </table>
-    </div>
-    <div class="lstm-charts">
-        <div class="lstm-chart-item"><h4>Suhu <span>(C)</span></h4><div class="lstm-chart-frame"><canvas id="lstmTempChart" aria-label="Suhu aktual dan prediksi"></canvas></div></div>
-        <div class="lstm-chart-item"><h4>Tekanan QNH <span>(hPa)</span></h4><div class="lstm-chart-frame"><canvas id="lstmQnhChart" aria-label="QNH aktual dan prediksi"></canvas></div></div>
-        <div class="lstm-chart-item"><h4>Kecepatan angin <span>(kt)</span></h4><div class="lstm-chart-frame"><canvas id="lstmWindChart" aria-label="Angin aktual dan prediksi"></canvas></div></div>
-        <div class="lstm-chart-item"><h4>Titik embun <span>(C)</span></h4><div class="lstm-chart-frame"><canvas id="lstmDewChart" aria-label="Titik embun aktual dan prediksi"></canvas></div></div>
+    <div class="lstm-collapsible-content" id="lstmCollapsibleContent">
+        <div class="lstm-error hidden" id="lstmError" role="status"></div>
+        <div class="lstm-forecast-meta">
+            <span>Observasi terakhir <strong id="lstmActualTime">--</strong></span>
+            <span>Prediksi +30 menit <strong id="lstmForecastTime30m">--</strong></span>
+            <span>Prediksi +1 jam <strong id="lstmForecastTime1h">--</strong></span>
+            <strong id="lstmForecastTime" style="display:none">--</strong>
+        </div>
+        <div class="table-responsive lstm-metrics-wrap">
+            <table class="data-table modern-table lstm-metrics-table">
+                <thead>
+                    <tr>
+                        <th>Parameter</th>
+                        <th>Aktual</th>
+                        <th>Prediksi +30 Menit</th>
+                        <th>Prediksi +1 Jam</th>
+                        <th>Perubahan (+1j)</th>
+                    </tr>
+                </thead>
+                <tbody id="lstmMetrics">
+                    <tr><td colspan="5">Menunggu layanan LSTM...</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="lstm-charts">
+            <div class="lstm-chart-item"><h4>Suhu <span>(C)</span></h4><div class="lstm-chart-frame"><canvas id="lstmTempChart" aria-label="Suhu aktual dan prediksi"></canvas></div></div>
+            <div class="lstm-chart-item"><h4>Tekanan QNH <span>(hPa)</span></h4><div class="lstm-chart-frame"><canvas id="lstmQnhChart" aria-label="QNH aktual dan prediksi"></canvas></div></div>
+            <div class="lstm-chart-item"><h4>Kecepatan angin <span>(kt)</span></h4><div class="lstm-chart-frame"><canvas id="lstmWindChart" aria-label="Angin aktual dan prediksi"></canvas></div></div>
+            <div class="lstm-chart-item"><h4>Titik embun <span>(C)</span></h4><div class="lstm-chart-frame"><canvas id="lstmDewChart" aria-label="Titik embun aktual dan prediksi"></canvas></div></div>
+        </div>
     </div>
 </section>
 

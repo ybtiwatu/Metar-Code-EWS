@@ -10,7 +10,7 @@
     <meta name="description"
         content="Independent METAR data processing and aviation weather dashboard">
     <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/favicon.png') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=2.5">
 
     <!-- Dependencies -->
     <script defer src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -173,7 +173,7 @@
 
     {% block extra_scripts_top %}{% endblock %}
 
-    <script defer src="{{ url_for('static', filename='dashboard.js') }}?v=2.4"></script>
+    <script defer src="{{ url_for('static', filename='dashboard.js') }}?v=2.5"></script>
 
     <!-- ============================================
          MANUAL EBOOK MODAL
