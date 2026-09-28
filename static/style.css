@@ -1707,6 +1707,169 @@ button.sidebar-link {
 }
 
 /* ============================================= */
+/* PARAMETER CUACA TREND (UNIFIED 2x2 PANEL)     */
+/* ============================================= */
+
+.trend-main-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 0;
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  margin-bottom: var(--space-xl);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.trend-main-card:hover {
+  box-shadow: var(--shadow-md);
+}
+
+.trend-header-flex {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 1.1rem 1.4rem;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.trend-title-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.trend-title-wrap .card-title {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.trend-subtitle {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  font-weight: 400;
+}
+
+.trend-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.trend-collapse-btn,
+.trend-refresh-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 6px 13px;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  background: var(--bg-body);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.trend-collapse-btn:hover,
+.trend-refresh-btn:hover {
+  background: var(--bg-surface-alt);
+  transform: translateY(-1px);
+  border-color: var(--accent-primary);
+}
+
+.trend-refresh-btn.rotating .icon {
+  display: inline-block;
+  animation: spin 0.8s linear infinite;
+}
+
+.trend-collapsible-content {
+  display: block;
+  transition: opacity 0.25s ease;
+}
+
+.trend-collapsible-content.collapsed {
+  display: none !important;
+}
+
+.trend-charts-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  padding: 18px 20px;
+}
+
+@media (max-width: 960px) {
+  .trend-charts-grid {
+    grid-template-columns: 1fr;
+    padding: 14px 16px;
+    gap: 14px;
+  }
+}
+
+.trend-chart-item {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.trend-chart-item:hover {
+  border-color: rgba(var(--accent-primary-rgb, 59, 130, 246), 0.3);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.trend-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.trend-item-title {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.trend-chart-frame {
+  position: relative;
+  height: 230px !important;
+  width: 100%;
+}
+
+.trend-chart-frame canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.trend-footer-info {
+  padding: 10px 20px;
+  font-size: 0.83rem;
+  color: var(--text-secondary);
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-body);
+}
+
+/* ============================================= */
 /* CHART MIN/MAX INDICATORS                      */
 /* ============================================= */
 

@@ -271,51 +271,83 @@
     </div>
 </div> -->
 
-<div class="card chart-card fade-in" style="animation-delay:0.17s">
-    <div class="card-header">
-        <h3 class="card-title"><span class="icon">🌡️</span> Temperature Trend</h3>
-        <button class="btn btn-sm btn-outline" onclick="downloadChart('tempChart')">📥 Download</button>
+<!-- ========== PARAMETER CUACA TREND (UNIFIED & COLLAPSIBLE) ========== -->
+<div class="card trend-main-card fade-in" id="trendMainCard" style="animation-delay:0.17s">
+    <div class="card-header trend-header-flex">
+        <div class="trend-title-wrap">
+            <h3 class="card-title"><span class="icon">📈</span> Parameter Cuaca Trend</h3>
+            <span class="trend-subtitle">Tren Historis: Suhu Udara, Titik Embun, Tekanan QNH, dan Kecepatan Angin</span>
+        </div>
+        <div class="trend-header-actions">
+            <button type="button" class="btn btn-sm btn-outline trend-refresh-btn" id="trendRefreshBtn" onclick="refreshTrendData()" title="Segarkan Data Tren">
+                <span class="icon">↻</span> Refresh
+            </button>
+            <button type="button" class="btn btn-sm btn-outline trend-collapse-btn" id="trendCollapseBtn" onclick="toggleTrendPanel()" title="Ciutkan / Buka Panel Tren">
+                <span id="trendCollapseIcon">▲</span> <span id="trendCollapseText">Ciutkan</span>
+            </button>
+        </div>
     </div>
-    <div class="chart-container">
-        <canvas id="tempChart"></canvas>
-    </div>
-    <div id="tempChart-minmax" class="chart-minmax-row loading"></div>
-    <div id="tempChart-info"
-        style="padding: 10px 16px; font-size: 0.85rem; color: var(--text-secondary); border-top: 1px solid var(--border-color);">
-        {% if history_start %}{{ history_start }} to {{ history_end }} • {{ history_count }} records (from
-        {{ history_source }}){% else %}Loading temperature trend data...{% endif %}
-    </div>
-</div>
 
-<div class="card chart-card fade-in" style="animation-delay:0.18s">
-    <div class="card-header">
-        <h3 class="card-title"><span class="icon">📊</span> Pressure (QNH) Trend</h3>
-        <button class="btn btn-sm btn-outline" onclick="downloadChart('pressureChart')">📥 Download</button>
-    </div>
-    <div class="chart-container">
-        <canvas id="pressureChart"></canvas>
-    </div>
-    <div id="pressureChart-minmax" class="chart-minmax-row loading"></div>
-    <div id="pressureChart-info"
-        style="padding: 10px 16px; font-size: 0.85rem; color: var(--text-secondary); border-top: 1px solid var(--border-color);">
-        {% if history_start %}{{ history_start }} to {{ history_end }} • {{ history_count }} records (from
-        {{ history_source }}){% else %}Loading pressure trend data...{% endif %}
-    </div>
-</div>
+    <!-- Collapsible Content (Default Open) -->
+    <div class="trend-collapsible-content" id="trendCollapsibleContent">
+        <div class="trend-charts-grid">
+            <!-- 1. Suhu Udara -->
+            <div class="trend-chart-item">
+                <div class="trend-item-header">
+                    <span class="trend-item-title"><span class="icon">🌡️</span> Suhu Udara (°C)</span>
+                    <button type="button" class="btn btn-xs btn-outline" onclick="downloadChart('tempChart')" title="Unduh Grafik Suhu">📥 Unduh</button>
+                </div>
+                <div class="chart-container trend-chart-frame">
+                    <canvas id="tempChart"></canvas>
+                </div>
+                <div id="tempChart-minmax" class="chart-minmax-row loading"></div>
+            </div>
 
-<div class="card chart-card fade-in" style="animation-delay:0.19s">
-    <div class="card-header">
-        <h3 class="card-title"><span class="icon">💨</span> Wind Speed Trend</h3>
-        <button class="btn btn-sm btn-outline" onclick="downloadChart('windChart')">📥 Download</button>
-    </div>
-    <div class="chart-container">
-        <canvas id="windChart"></canvas>
-    </div>
-    <div id="windChart-minmax" class="chart-minmax-row loading"></div>
-    <div id="windChart-info"
-        style="padding: 10px 16px; font-size: 0.85rem; color: var(--text-secondary); border-top: 1px solid var(--border-color);">
-        {% if history_start %}{{ history_start }} to {{ history_end }} • {{ history_count }} records (from
-        {{ history_source }}){% else %}Loading wind trend data...{% endif %}
+            <!-- 2. Titik Embun (Dew Point) -->
+            <div class="trend-chart-item">
+                <div class="trend-item-header">
+                    <span class="trend-item-title"><span class="icon">💧</span> Titik Embun (°C)</span>
+                    <button type="button" class="btn btn-xs btn-outline" onclick="downloadChart('dewChart')" title="Unduh Grafik Titik Embun">📥 Unduh</button>
+                </div>
+                <div class="chart-container trend-chart-frame">
+                    <canvas id="dewChart"></canvas>
+                </div>
+                <div id="dewChart-minmax" class="chart-minmax-row loading"></div>
+            </div>
+
+            <!-- 3. Tekanan QNH -->
+            <div class="trend-chart-item">
+                <div class="trend-item-header">
+                    <span class="trend-item-title"><span class="icon">📊</span> Tekanan QNH (hPa)</span>
+                    <button type="button" class="btn btn-xs btn-outline" onclick="downloadChart('pressureChart')" title="Unduh Grafik Tekanan">📥 Unduh</button>
+                </div>
+                <div class="chart-container trend-chart-frame">
+                    <canvas id="pressureChart"></canvas>
+                </div>
+                <div id="pressureChart-minmax" class="chart-minmax-row loading"></div>
+            </div>
+
+            <!-- 4. Kecepatan & Gust Angin -->
+            <div class="trend-chart-item">
+                <div class="trend-item-header">
+                    <span class="trend-item-title"><span class="icon">💨</span> Kecepatan Angin (kt)</span>
+                    <button type="button" class="btn btn-xs btn-outline" onclick="downloadChart('windChart')" title="Unduh Grafik Kecepatan Angin">📥 Unduh</button>
+                </div>
+                <div class="chart-container trend-chart-frame">
+                    <canvas id="windChart"></canvas>
+                </div>
+                <div id="windChart-minmax" class="chart-minmax-row loading"></div>
+            </div>
+        </div>
+
+        <div id="trendChart-info" class="trend-footer-info">
+            {% if history_start %}{{ history_start }} to {{ history_end }} • {{ history_count }} records (from {{ history_source }}){% else %}Loading data tren parameter cuaca...{% endif %}
+        </div>
+        <!-- Hidden elements for backward compatibility -->
+        <span id="tempChart-info" style="display:none;"></span>
+        <span id="dewChart-info" style="display:none;"></span>
+        <span id="pressureChart-info" style="display:none;"></span>
+        <span id="windChart-info" style="display:none;"></span>
     </div>
 </div>
 
@@ -383,7 +415,7 @@
 {% if has_history %}
 <!-- Data Storage for Charts -->
 <div id="chart-data-store" style="display: none;" data-labels='{{ labels | tojson | safe }}'
-    data-temps='{{ temps | tojson | safe }}' data-pressures='{{ pressures | tojson | safe }}'
+    data-temps='{{ temps | tojson | safe }}' data-dewpoints='{{ dewpoints | tojson | safe }}' data-pressures='{{ pressures | tojson | safe }}'
     data-winds='{{ winds | tojson | safe }}' data-gusts='{{ gusts | tojson | safe }}'></div>
 
 <script>
@@ -396,13 +428,14 @@
             try {
                 const labels = JSON.parse(chartStore.getAttribute('data-labels'));
                 const temps = JSON.parse(chartStore.getAttribute('data-temps'));
+                const dewpoints = JSON.parse(chartStore.getAttribute('data-dewpoints') || '[]');
                 const pressures = JSON.parse(chartStore.getAttribute('data-pressures'));
                 const winds = JSON.parse(chartStore.getAttribute('data-winds'));
                 const gusts = JSON.parse(chartStore.getAttribute('data-gusts'));
 
                 if (typeof updateCharts === 'function' && labels && labels.length > 0) {
                     setTimeout(() => {
-                        updateCharts(labels, temps, pressures, winds, gusts);
+                        updateCharts(labels, temps, pressures, winds, gusts, dewpoints);
                     }, 300);
                 }
             } catch (e) {

@@ -2106,6 +2106,7 @@ def get_history_api():
                 "station": row["station"],
                 "metar": row["metar"],
                 "temp": extract_temp(str(row["metar"])),
+                "dewpoint": parsed.get("dewpoint_c"),
                 "pressure": extract_pressure(str(row["metar"])),
                 "wind": parsed.get("wind_speed_kt"),
                 "gust": parsed.get("wind_gust_kt"),
@@ -2115,6 +2116,7 @@ def get_history_api():
         # Format for charts (oldest to newest)
         labels = [pd.to_datetime(t).strftime("%d/%m/%y %H:%M UTC") for t in df["time"]]
         temps = [extract_temp(m) for m in df["metar"]]
+        dewpoints = [parse_metar(str(m)).get("dewpoint_c") for m in df["metar"]]
         pressures = [extract_pressure(m) for m in df["metar"]]
         
         # Calculate range and source
@@ -2128,6 +2130,7 @@ def get_history_api():
             "data": data_list,
             "labels": labels,
             "temps": temps,
+            "dewpoints": dewpoints,
             "pressures": pressures,
             "range": {
                 "start": start_time,
@@ -2544,6 +2547,7 @@ def common_view_context_data():
                 m = str(row["metar"])
                 labels.append(pd.to_datetime(row["time"]).strftime("%d/%m/%y %H:%M"))
                 temps.append(extract_temp(m))
+                dewpoints.append(parse_metar(m).get("dewpoint_c"))
                 pressures.append(extract_pressure(m))
                 
                 # Extract wind speed and gust for charts
@@ -2568,6 +2572,7 @@ def common_view_context_data():
         "current_day": current_day,
         "has_history": has_history,
         "temps": temps,
+        "dewpoints": dewpoints,
         "pressures": pressures,
         "winds": winds,
         "gusts": gusts,
@@ -3719,6 +3724,7 @@ def get_today_records():
         chart_df = today_df.sort_values("time", ascending=True)
         chart_labels = []
         chart_temps = []
+        chart_dewpoints = []
         chart_pressures = []
         chart_winds = []
         chart_gusts = []
@@ -3730,6 +3736,7 @@ def get_today_records():
             chart_labels.append(row["time"].strftime("%H:%M"))
             p = parse_metar(str(row["metar"]))
             chart_temps.append(float(p.get("temperature_c")) if p.get("temperature_c") else None)
+            chart_dewpoints.append(float(p.get("dewpoint_c")) if p.get("dewpoint_c") is not None else None)
             chart_pressures.append(float(p.get("pressure_hpa")) if p.get("pressure_hpa") else None)
             chart_winds.append(float(p.get("wind_speed_kt")) if p.get("wind_speed_kt") else None)
             chart_gusts.append(float(p.get("wind_gust_kt")) if p.get("wind_gust_kt") else None)
@@ -3741,6 +3748,7 @@ def get_today_records():
             "chart_data": {
                 "labels": chart_labels,
                 "temps": chart_temps,
+                "dewpoints": chart_dewpoints,
                 "pressures": chart_pressures,
                 "winds": chart_winds,
                 "gusts": chart_gusts
@@ -3839,6 +3847,7 @@ def get_yesterday_records():
         chart_df = yesterday_df.sort_values("time", ascending=True) if not yesterday_df.empty else pd.DataFrame()
         chart_labels = []
         chart_temps = []
+        chart_dewpoints = []
         chart_pressures = []
         chart_winds = []
         chart_gusts = []
@@ -3850,6 +3859,7 @@ def get_yesterday_records():
             chart_labels.append(row["time"].strftime("%H:%M"))
             p = parse_metar(str(row["metar"]))
             chart_temps.append(float(p.get("temperature_c")) if p.get("temperature_c") else None)
+            chart_dewpoints.append(float(p.get("dewpoint_c")) if p.get("dewpoint_c") is not None else None)
             chart_pressures.append(float(p.get("pressure_hpa")) if p.get("pressure_hpa") else None)
             chart_winds.append(float(p.get("wind_speed_kt")) if p.get("wind_speed_kt") else None)
             chart_gusts.append(float(p.get("wind_gust_kt")) if p.get("wind_gust_kt") else None)
@@ -3861,6 +3871,7 @@ def get_yesterday_records():
             "chart_data": {
                 "labels": chart_labels,
                 "temps": chart_temps,
+                "dewpoints": chart_dewpoints,
                 "pressures": chart_pressures,
                 "winds": chart_winds,
                 "gusts": chart_gusts

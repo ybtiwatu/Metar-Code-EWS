@@ -7,6 +7,7 @@ if (typeof window.isManualSession === "undefined") window.isManualSession = fals
 // STATE
 // =======================
 let tempChart = null;
+let dewChart = null;
 let pressureChart = null;
 let windChart = null;
 let lastMetarRaw = null;
@@ -304,7 +305,7 @@ function updateChartColors() {
 
     // Update charts if they exist and library is loaded
     if (typeof Chart !== 'undefined') {
-        [tempChart, pressureChart, windChart].forEach(chart => {
+        [tempChart, dewChart, pressureChart, windChart].forEach(chart => {
             if (chart) {
                 if (chart.options && chart.options.scales) {
                     if (chart.options.scales.x) {
@@ -1252,6 +1253,8 @@ function playStaleAlarm() {
 const chartColors = {
     tempLine: '#DC2626',
     tempFill: 'rgba(220, 38, 38, 0.08)',
+    dewLine: '#0284C7',
+    dewFill: 'rgba(2, 132, 199, 0.08)',
     pressureLine: '#2E5C8A',
     pressureFill: 'rgba(46, 92, 138, 0.08)',
     windLine: '#E8B339',
@@ -1340,51 +1343,78 @@ function chartDefaults() {
 
 function createCharts() {
     const tempCanvas = document.getElementById('tempChart');
+    const dewCanvas = document.getElementById('dewChart');
     const pressureCanvas = document.getElementById('pressureChart');
-    if (!tempCanvas || !pressureCanvas) return;
+    if (!tempCanvas && !pressureCanvas && !dewCanvas) return;
 
-    if (tempChart) tempChart.destroy();
-    if (pressureChart) pressureChart.destroy();
+    if (tempCanvas) {
+        if (tempChart) tempChart.destroy();
+        tempChart = new Chart(tempCanvas.getContext('2d'), {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Temperature (°C)',
+                    data: [],
+                    borderColor: chartColors.tempLine,
+                    backgroundColor: chartColors.tempFill,
+                    borderWidth: 2.5,
+                    tension: 0.4,
+                    fill: true,
+                    pointRadius: 3,
+                    pointHoverRadius: 6,
+                    pointBackgroundColor: chartColors.tempLine
+                }]
+            },
+            options: chartDefaults()
+        });
+    }
 
-    tempChart = new Chart(tempCanvas.getContext('2d'), {
-        type: 'line',
-        data: {
-            labels: [],
-            datasets: [{
-                label: 'Temperature (°C)',
-                data: [],
-                borderColor: chartColors.tempLine,
-                backgroundColor: chartColors.tempFill,
-                borderWidth: 2.5,
-                tension: 0.4,
-                fill: true,
-                pointRadius: 3,
-                pointHoverRadius: 6,
-                pointBackgroundColor: chartColors.tempLine
-            }]
-        },
-        options: chartDefaults()
-    });
+    if (dewCanvas) {
+        if (dewChart) dewChart.destroy();
+        dewChart = new Chart(dewCanvas.getContext('2d'), {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Dew Point (°C)',
+                    data: [],
+                    borderColor: chartColors.dewLine,
+                    backgroundColor: chartColors.dewFill,
+                    borderWidth: 2.5,
+                    tension: 0.4,
+                    fill: true,
+                    pointRadius: 3,
+                    pointHoverRadius: 6,
+                    pointBackgroundColor: chartColors.dewLine
+                }]
+            },
+            options: chartDefaults()
+        });
+    }
 
-    pressureChart = new Chart(pressureCanvas.getContext('2d'), {
-        type: 'line',
-        data: {
-            labels: [],
-            datasets: [{
-                label: 'QNH (hPa)',
-                data: [],
-                borderColor: chartColors.pressureLine,
-                backgroundColor: chartColors.pressureFill,
-                borderWidth: 2.5,
-                tension: 0.4,
-                fill: true,
-                pointRadius: 3,
-                pointHoverRadius: 6,
-                pointBackgroundColor: chartColors.pressureLine
-            }]
-        },
-        options: chartDefaults()
-    });
+    if (pressureCanvas) {
+        if (pressureChart) pressureChart.destroy();
+        pressureChart = new Chart(pressureCanvas.getContext('2d'), {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'QNH (hPa)',
+                    data: [],
+                    borderColor: chartColors.pressureLine,
+                    backgroundColor: chartColors.pressureFill,
+                    borderWidth: 2.5,
+                    tension: 0.4,
+                    fill: true,
+                    pointRadius: 3,
+                    pointHoverRadius: 6,
+                    pointBackgroundColor: chartColors.pressureLine
+                }]
+            },
+            options: chartDefaults()
+        });
+    }
 }
 
 function createWindChart() {
@@ -1473,11 +1503,22 @@ async function loadHistory() {
 
         const labels = result.labels || result.data.map(r => r.time);
         const temps = result.temps || result.data.map(r => r.temp);
+        const dewpoints = result.dewpoints || result.data.map(r => {
+            if (r.dewpoint !== undefined && r.dewpoint !== null) return r.dewpoint;
+            if (r.metar) {
+                const m = r.metar.match(/(?:\s|^)(M?\d{2})\/(M?\d{2})(?:\s|$)/);
+                if (m) {
+                    let d = m[2];
+                    return d.startsWith('M') ? -parseInt(d.substring(1), 10) : parseInt(d, 10);
+                }
+            }
+            return null;
+        });
         const pressures = result.pressures || result.data.map(r => r.pressure);
         const winds = result.data.map(r => r.wind);
         const gusts = result.data.map(r => r.gust);
 
-        if (!tempChart || !pressureChart) {
+        if (!tempChart || !pressureChart || !dewChart) {
             console.log('[CHART] Initializing charts...');
             createCharts();
         }
@@ -1488,6 +1529,11 @@ async function loadHistory() {
             tempChart.data.labels = labels;
             tempChart.data.datasets[0].data = temps;
             tempChart.update('active');
+        }
+        if (dewChart && dewChart.data) {
+            dewChart.data.labels = labels;
+            dewChart.data.datasets[0].data = dewpoints;
+            dewChart.update('active');
         }
         if (pressureChart && pressureChart.data) {
             pressureChart.data.labels = labels;
@@ -1505,13 +1551,13 @@ async function loadHistory() {
 
         // Update data summary indicators (footers)
         const infoText = `${result.range.start} to ${result.range.end} • ${result.count} records (from ${result.source})`;
-        ['tempChart-info', 'pressureChart-info', 'windChart-info'].forEach(id => {
+        ['tempChart-info', 'dewChart-info', 'pressureChart-info', 'windChart-info', 'trendChart-info'].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.textContent = infoText;
         });
 
         // Trigger min/max indicators update
-        updateChartMinMax(labels, temps, pressures, winds, gusts);
+        updateChartMinMax(labels, temps, pressures, winds, gusts, dewpoints);
 
         console.log('[CHART] Charts successfully updated with summary info');
     } catch (e) {
@@ -1520,16 +1566,21 @@ async function loadHistory() {
 }
 
 // Alias for compatibility
-function updateCharts(labels, temps, pressures, winds, gusts) {
+function updateCharts(labels, temps, pressures, winds, gusts, dewpoints) {
     if (labels && temps) {
         // Initial manual load from template data
-        if (!tempChart && document.getElementById('tempChart')) createCharts();
+        if ((!tempChart || !dewChart) && (document.getElementById('tempChart') || document.getElementById('dewChart'))) createCharts();
         if (!windChart && document.getElementById('windChart')) createWindChart();
 
         if (tempChart) {
             tempChart.data.labels = labels;
             tempChart.data.datasets[0].data = temps;
             tempChart.update();
+        }
+        if (dewChart && dewpoints) {
+            dewChart.data.labels = labels;
+            dewChart.data.datasets[0].data = dewpoints;
+            dewChart.update();
         }
         if (pressureChart) {
             pressureChart.data.labels = labels;
@@ -1545,7 +1596,7 @@ function updateCharts(labels, temps, pressures, winds, gusts) {
             windChart.update();
         }
         // Trigger min/max indicators update
-        updateChartMinMax(labels, temps, pressures, winds, gusts);
+        updateChartMinMax(labels, temps, pressures, winds, gusts, dewpoints);
     } else {
         loadHistory();
     }
@@ -1625,8 +1676,9 @@ function initializeChartPeriodControls() {
  * @param {number[]} pressures - Pressure values
  * @param {number[]} winds - Wind speed values
  * @param {number[]} gusts - Wind gust values (optional)
+ * @param {number[]} dewpoints - Dew point values (optional)
  */
-function updateChartMinMax(labels, temps, pressures, winds, gusts) {
+function updateChartMinMax(labels, temps, pressures, winds, gusts, dewpoints) {
     // Helper: find min/max with index from numeric array
     function findMinMax(dataArr, labelArr) {
         const validPairs = [];
@@ -1688,6 +1740,12 @@ function updateChartMinMax(labels, temps, pressures, winds, gusts) {
     if (temps && temps.length > 0) {
         const tempResult = findMinMax(temps, labels);
         renderMinMaxRow('tempChart-minmax', tempResult, '°C', '❄️', '🔥', true);
+    }
+
+    // Dew Point
+    if (dewpoints && dewpoints.length > 0) {
+        const dewResult = findMinMax(dewpoints, labels);
+        renderMinMaxRow('dewChart-minmax', dewResult, '°C', '💧', '🌡️', false);
     }
 
     // Pressure
@@ -2056,6 +2114,7 @@ function downloadChart(chartId) {
     let fallbackFilename = 'Chart';
 
     if (chartId === 'tempChart') { chartInstance = tempChart; fallbackFilename = 'Temperature_Trend'; }
+    else if (chartId === 'dewChart') { chartInstance = dewChart; fallbackFilename = 'DewPoint_Trend'; }
     else if (chartId === 'pressureChart') { chartInstance = pressureChart; fallbackFilename = 'Pressure_Trend'; }
     else if (chartId === 'windChart') { chartInstance = windChart; fallbackFilename = 'Wind_Speed_Trend'; }
 
@@ -2806,12 +2865,13 @@ async function loadView(viewType) {
                 data.chart_data.temps,
                 data.chart_data.pressures,
                 data.chart_data.winds,
-                data.chart_data.gusts
+                data.chart_data.gusts,
+                data.chart_data.dewpoints
             );
 
             // Update info text for charts
             const infoText = `${data.date} • ${data.count} records (View: ${viewType})`;
-            ['tempChart-info', 'pressureChart-info', 'windChart-info'].forEach(id => {
+            ['tempChart-info', 'dewChart-info', 'pressureChart-info', 'windChart-info', 'trendChart-info'].forEach(id => {
                 const el = document.getElementById(id);
                 if (el) el.textContent = infoText;
             });
@@ -3560,6 +3620,54 @@ window.filterReportType = filterReportType;
     }
     window.toggleMetarMainCard = toggleMetarMainCard;
     window.toggleRawMetar = toggleMetarMainCard;
+
+    function toggleTrendPanel() {
+        const content = document.getElementById('trendCollapsibleContent');
+        const icon = document.getElementById('trendCollapseIcon');
+        const text = document.getElementById('trendCollapseText');
+        const btn = document.getElementById('trendCollapseBtn');
+        if (!content) return;
+
+        const isCollapsed = content.classList.toggle('collapsed');
+        if (btn) btn.setAttribute('aria-expanded', !isCollapsed);
+        if (icon) icon.textContent = isCollapsed ? '▼' : '▲';
+        if (text) text.textContent = isCollapsed ? 'Buka Tren' : 'Ciutkan';
+
+        // When expanding, resize Chart.js charts so canvas dimensions render correctly
+        if (!isCollapsed) {
+            setTimeout(() => {
+                [tempChart, dewChart, pressureChart, windChart].forEach(c => {
+                    if (c && c.resize) c.resize();
+                });
+            }, 60);
+        }
+    }
+    window.toggleTrendPanel = toggleTrendPanel;
+
+    async function refreshTrendData() {
+        const btn = document.getElementById('trendRefreshBtn');
+        if (btn) btn.classList.add('rotating');
+        try {
+            if (typeof currentView !== 'undefined' && currentView === 'yesterday') {
+                await loadView('yesterday');
+            } else {
+                await loadHistory();
+            }
+            if (typeof showToast === 'function') {
+                showToast('Parameter Cuaca Trend', 'Data grafik tren cuaca berhasil diperbarui.', 'success', 2500, false);
+            }
+        } catch (e) {
+            console.error('Error refreshing trend data:', e);
+            if (typeof showToast === 'function') {
+                showToast('Parameter Cuaca Trend', 'Gagal menyegarkan grafik tren cuaca.', 'warning', 3000, false);
+            }
+        } finally {
+            setTimeout(() => {
+                if (btn) btn.classList.remove('rotating');
+            }, 600);
+        }
+    }
+    window.refreshTrendData = refreshTrendData;
 
     document.addEventListener('DOMContentLoaded', () => {
         loadEwsStatus();
