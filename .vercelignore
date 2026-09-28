@@ -1,5 +1,0 @@
-.venv/
-venv/
-.git/
-__pycache__/
-*.py[cod]

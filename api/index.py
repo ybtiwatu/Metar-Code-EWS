@@ -1212,6 +1212,7 @@ def _load_ews_assets():
         model_path = os.path.join(project_root, "model_ews_metar.pkl")
         feature_path = os.path.join(project_root, "urutan_fitur.pkl")
         with open(model_path, "rb") as model_file:
+            
             _ews_model = pickle.load(model_file)
         with open(feature_path, "rb") as feature_file:
             _ews_feature_order = list(pickle.load(feature_file))
