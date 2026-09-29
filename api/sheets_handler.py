@@ -6,6 +6,7 @@ import pandas as pd  # type: ignore
 from datetime import datetime, timedelta
 import time
 import sys
+import math
 
 # Spreadsheet ID from user
 SPREADSHEET_ID = "1Cvn7bkyzaTsJD8oi9w-E9DgNzGLet2tz2_zVuq52mdI"
@@ -709,13 +710,73 @@ class GoogleSheetHandler:
                     existing_metars.add(m_raw)
 
             if rows_to_append:
-                worksheet.append_rows(rows_to_append, value_input_option="USER_ENTERED")
+                worksheet.append_rows(rows_to_append, value_input_option="RAW")
                 print(f"[SHEETS] Appended {len(rows_to_append)} row(s) to 'PredictionComparison'", file=sys.stderr)
                 self._cache.pop("comparison_records", None)
             return True
         except Exception as e:
             print(f"[SHEETS] Error saving comparison record: {e}", file=sys.stderr)
             return False
+
+    @staticmethod
+    def _sanitize_comparison_record(r: dict) -> dict:
+        """
+        Memulihkan nilai desimal yang dihilangkan oleh parsing otomatis Google Sheets
+        pada spreadsheet dengan locale Indonesia (di mana '.' dianggap pemisah ribuan).
+        Contoh: 32.17 menjadi 3217 -> dipulihkan kembali ke 32.17.
+        """
+        if not isinstance(r, dict):
+            return r
+        cleaned = dict(r)
+
+        def _clean_val(key, scale_factors):
+            val = cleaned.get(key)
+            if val is None or val == "":
+                return
+            try:
+                f = float(val)
+                if not math.isfinite(f):
+                    return
+                for threshold, divisor in scale_factors:
+                    if abs(f) > threshold:
+                        f = f / divisor
+                        break
+                cleaned[key] = round(f, 2)
+            except (TypeError, ValueError):
+                pass
+
+        # Suhu & Dew Point: rentang wajar -10 sampai 55 °C
+        _clean_val("actual_temp", [(500, 100.0), (60, 10.0)])
+        _clean_val("pred_temp_30m", [(500, 100.0), (60, 10.0)])
+        _clean_val("actual_dew", [(500, 100.0), (60, 10.0)])
+        _clean_val("pred_dew_30m", [(500, 100.0), (60, 10.0)])
+
+        # QNH: rentang wajar 900 sampai 1100 hPa
+        _clean_val("actual_qnh", [(50000, 100.0), (5000, 10.0)])
+        _clean_val("pred_qnh_30m", [(50000, 100.0), (5000, 10.0)])
+
+        # Angin: rentang wajar 0 sampai 80 kt
+        _clean_val("actual_wind", [(500, 100.0), (70, 10.0)])
+        _clean_val("pred_wind_30m", [(500, 100.0), (70, 10.0)])
+
+        # XGBoost Probabilitas & Confidence
+        _clean_val("xgb_danger_prob", [(100, 100.0)])
+        _clean_val("xgb_confidence", [(100, 100.0)])
+
+        # Hitung ulang error langsung dari selisih absolut untuk akurasi mutlak
+        try:
+            if cleaned.get("actual_temp") is not None and cleaned.get("pred_temp_30m") is not None:
+                cleaned["err_temp_30m"] = round(abs(float(cleaned["actual_temp"]) - float(cleaned["pred_temp_30m"])), 2)
+            if cleaned.get("actual_qnh") is not None and cleaned.get("pred_qnh_30m") is not None:
+                cleaned["err_qnh_30m"] = round(abs(float(cleaned["actual_qnh"]) - float(cleaned["pred_qnh_30m"])), 2)
+            if cleaned.get("actual_wind") is not None and cleaned.get("pred_wind_30m") is not None:
+                cleaned["err_wind_30m"] = round(abs(float(cleaned["actual_wind"]) - float(cleaned["pred_wind_30m"])), 2)
+            if cleaned.get("actual_dew") is not None and cleaned.get("pred_dew_30m") is not None:
+                cleaned["err_dew_30m"] = round(abs(float(cleaned["actual_dew"]) - float(cleaned["pred_dew_30m"])), 2)
+        except Exception:
+            pass
+
+        return cleaned
 
     def get_comparison_records(self, limit: int = 100, period: str = "today", station: str = "WARR", bypass_cache: bool = False) -> list:
         """
@@ -755,6 +816,8 @@ class GoogleSheetHandler:
         if not all_records:
             return []
 
+        all_records = [self._sanitize_comparison_record(r) for r in all_records]
+
         # Filter by station
         station_records = [
             r for r in all_records
@@ -790,6 +853,33 @@ class GoogleSheetHandler:
     # =========================================================================
     # RINGKASAN EVALUASI HARIAN (DAILY ROLL-UP ACCUMULATOR)
     # =========================================================================
+
+    @staticmethod
+    def _sanitize_daily_summary_record(r: dict) -> dict:
+        """
+        Sanitasi akumulator evaluasi harian jika tersimpan dengan format locale ribuan Google Sheets.
+        """
+        if not isinstance(r, dict):
+            return r
+        cleaned = dict(r)
+        n_lstm = int(cleaned.get("total_samples_lstm") or 0)
+        if n_lstm > 0:
+            for feat, th in [("suhu", 20.0), ("angin", 20.0), ("qnh", 20.0)]:
+                sae_key = f"sum_abs_error_{feat}"
+                sse_key = f"sum_sq_error_{feat}"
+                sae = cleaned.get(sae_key)
+                sse = cleaned.get(sse_key)
+                try:
+                    sae_f = float(sae) if sae is not None and str(sae).strip() != "" else 0.0
+                    sse_f = float(sse) if sse is not None and str(sse).strip() != "" else 0.0
+                    if (sae_f / n_lstm) > th:
+                        sae_f /= 100.0
+                        sse_f /= 10000.0
+                        cleaned[sae_key] = round(sae_f, 4)
+                        cleaned[sse_key] = round(sse_f, 4)
+                except (TypeError, ValueError):
+                    pass
+        return cleaned
 
     @staticmethod
     def _get_daily_summary_csv_path():
@@ -908,10 +998,10 @@ class GoogleSheetHandler:
             if row_idx_to_update:
                 # Update existing row
                 cell_range = f"A{row_idx_to_update}:U{row_idx_to_update}"
-                worksheet.update(cell_range, [row_values], value_input_option="USER_ENTERED")
+                worksheet.update(cell_range, [row_values], value_input_option="RAW")
                 print(f"[SHEETS] Updated existing row {row_idx_to_update} in 'RingkasanEvaluasiHarian' for {station} {tanggal}", file=sys.stderr)
             else:
-                worksheet.append_row(row_values, value_input_option="USER_ENTERED")
+                worksheet.append_row(row_values, value_input_option="RAW")
                 print(f"[SHEETS] Appended new row in 'RingkasanEvaluasiHarian' for {station} {tanggal}", file=sys.stderr)
 
             self._cache.pop("daily_summary_records", None)
@@ -964,7 +1054,7 @@ class GoogleSheetHandler:
                 continue
             if end_date and r_date > end_date:
                 continue
-            filtered.append(r)
+            filtered.append(self._sanitize_daily_summary_record(r))
 
         return filtered
 

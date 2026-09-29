@@ -350,14 +350,27 @@ class ComparisonService:
         sae_angin = sse_angin = 0.0
         sae_qnh = sse_qnh = 0.0
 
-        for _, row in merged_lstm.iterrows():
-            p_suhu = row.get("lstm_pred_suhu_60m_donor") or row.get("lstm_pred_suhu_60m")
-            p_angin = row.get("lstm_pred_angin_60m_donor") or row.get("lstm_pred_angin_60m")
-            p_qnh = row.get("lstm_pred_qnh_60m_donor") or row.get("lstm_pred_qnh_60m")
+        def _clean_val(v, thresholds):
+            if v is None or pd.isna(v):
+                return None
+            try:
+                fv = float(v)
+                for th, div in thresholds:
+                    if abs(fv) > th:
+                        fv = fv / div
+                        break
+                return fv
+            except (TypeError, ValueError):
+                return None
 
-            act_suhu = row.get("suhu_aktual")
-            act_angin = row.get("kecepatan_angin_aktual")
-            act_qnh = row.get("qnh_aktual")
+        for _, row in merged_lstm.iterrows():
+            p_suhu = _clean_val(row.get("lstm_pred_suhu_60m_donor") or row.get("lstm_pred_suhu_60m"), [(500, 100.0), (60, 10.0)])
+            p_angin = _clean_val(row.get("lstm_pred_angin_60m_donor") or row.get("lstm_pred_angin_60m"), [(500, 100.0), (70, 10.0)])
+            p_qnh = _clean_val(row.get("lstm_pred_qnh_60m_donor") or row.get("lstm_pred_qnh_60m"), [(50000, 100.0), (5000, 10.0)])
+
+            act_suhu = _clean_val(row.get("suhu_aktual"), [(500, 100.0), (60, 10.0)])
+            act_angin = _clean_val(row.get("kecepatan_angin_aktual"), [(500, 100.0), (70, 10.0)])
+            act_qnh = _clean_val(row.get("qnh_aktual"), [(50000, 100.0), (5000, 10.0)])
 
             valid_step = False
             if pd.notna(act_suhu) and pd.notna(p_suhu):
@@ -451,6 +464,25 @@ class ComparisonService:
         n_lstm = int(acc.get("total_samples_lstm") or 0)
         n_xgb = int(acc.get("total_samples_xgb") or 0)
 
+        sae_suhu = float(acc.get("sum_abs_error_suhu") or 0.0)
+        sse_suhu = float(acc.get("sum_sq_error_suhu") or 0.0)
+        sae_angin = float(acc.get("sum_abs_error_angin") or 0.0)
+        sse_angin = float(acc.get("sum_sq_error_angin") or 0.0)
+        sae_qnh = float(acc.get("sum_abs_error_qnh") or 0.0)
+        sse_qnh = float(acc.get("sum_sq_error_qnh") or 0.0)
+
+        # Defensively normalize if accumulators were stored with stripped decimals
+        if n_lstm > 0:
+            if (sae_suhu / n_lstm) > 20.0:
+                sae_suhu /= 100.0
+                sse_suhu /= 10000.0
+            if (sae_angin / n_lstm) > 20.0:
+                sae_angin /= 100.0
+                sse_angin /= 10000.0
+            if (sae_qnh / n_lstm) > 20.0:
+                sae_qnh /= 100.0
+                sse_qnh /= 10000.0
+
         def calc_mae(sum_abs: float) -> Optional[float]:
             return round(sum_abs / n_lstm, 2) if n_lstm > 0 else None
 
@@ -461,16 +493,16 @@ class ComparisonService:
             "total_evaluasi": n_lstm,
             "horizon": "+60 menit (2 interval METAR)",
             "suhu_c": {
-                "mae": calc_mae(float(acc.get("sum_abs_error_suhu") or 0.0)),
-                "rmse": calc_rmse(float(acc.get("sum_sq_error_suhu") or 0.0))
+                "mae": calc_mae(sae_suhu),
+                "rmse": calc_rmse(sse_suhu)
             },
             "kecepatan_angin_kt": {
-                "mae": calc_mae(float(acc.get("sum_abs_error_angin") or 0.0)),
-                "rmse": calc_rmse(float(acc.get("sum_sq_error_angin") or 0.0))
+                "mae": calc_mae(sae_angin),
+                "rmse": calc_rmse(sse_angin)
             },
             "tekanan_qnh_hpa": {
-                "mae": calc_mae(float(acc.get("sum_abs_error_qnh") or 0.0)),
-                "rmse": calc_rmse(float(acc.get("sum_sq_error_qnh") or 0.0))
+                "mae": calc_mae(sae_qnh),
+                "rmse": calc_rmse(sse_qnh)
             }
         }
 

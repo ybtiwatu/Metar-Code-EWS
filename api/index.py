@@ -2249,22 +2249,31 @@ def build_comparison_response_from_records(records, station="WARR", period="toda
             "is_match": match_type in ("TP", "TN"),
         })
 
-        # LSTM data
-        act_temp = _safe_float(r.get("actual_temp"))
-        pred_temp = _safe_float(r.get("pred_temp_30m"))
-        err_temp = _safe_float(r.get("err_temp_30m"))
+        # LSTM data with defensive scale normalization
+        def _scale_fix(v, thresholds):
+            if v is None:
+                return None
+            for th, div in thresholds:
+                if abs(v) > th:
+                    v = v / div
+                    break
+            return round(v, 2)
 
-        act_qnh = _safe_float(r.get("actual_qnh"))
-        pred_qnh = _safe_float(r.get("pred_qnh_30m"))
-        err_qnh = _safe_float(r.get("err_qnh_30m"))
+        act_temp = _scale_fix(_safe_float(r.get("actual_temp")), [(500, 100.0), (60, 10.0)])
+        pred_temp = _scale_fix(_safe_float(r.get("pred_temp_30m")), [(500, 100.0), (60, 10.0)])
+        err_temp = round(abs(act_temp - pred_temp), 2) if (act_temp is not None and pred_temp is not None) else _safe_float(r.get("err_temp_30m"))
 
-        act_wind = _safe_float(r.get("actual_wind"))
-        pred_wind = _safe_float(r.get("pred_wind_30m"))
-        err_wind = _safe_float(r.get("err_wind_30m"))
+        act_qnh = _scale_fix(_safe_float(r.get("actual_qnh")), [(50000, 100.0), (5000, 10.0)])
+        pred_qnh = _scale_fix(_safe_float(r.get("pred_qnh_30m")), [(50000, 100.0), (5000, 10.0)])
+        err_qnh = round(abs(act_qnh - pred_qnh), 2) if (act_qnh is not None and pred_qnh is not None) else _safe_float(r.get("err_qnh_30m"))
 
-        act_dew = _safe_float(r.get("actual_dew"))
-        pred_dew = _safe_float(r.get("pred_dew_30m"))
-        err_dew = _safe_float(r.get("err_dew_30m"))
+        act_wind = _scale_fix(_safe_float(r.get("actual_wind")), [(500, 100.0), (70, 10.0)])
+        pred_wind = _scale_fix(_safe_float(r.get("pred_wind_30m")), [(500, 100.0), (70, 10.0)])
+        err_wind = round(abs(act_wind - pred_wind), 2) if (act_wind is not None and pred_wind is not None) else _safe_float(r.get("err_wind_30m"))
+
+        act_dew = _scale_fix(_safe_float(r.get("actual_dew")), [(500, 100.0), (60, 10.0)])
+        pred_dew = _scale_fix(_safe_float(r.get("pred_dew_30m")), [(500, 100.0), (60, 10.0)])
+        err_dew = round(abs(act_dew - pred_dew), 2) if (act_dew is not None and pred_dew is not None) else _safe_float(r.get("err_dew_30m"))
 
         if act_temp is not None and pred_temp is not None:
             if err_temp is not None: temp_errors_30m.append(err_temp)
