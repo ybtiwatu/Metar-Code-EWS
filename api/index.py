@@ -3,6 +3,7 @@ import json
 import random
 import requests  # pyre-ignore
 import pandas as pd  # pyre-ignore
+import numpy as np  # pyre-ignore
 import os
 import math
 import re
@@ -1978,6 +1979,451 @@ def redirect_xgboost():
 @app.route("/lstm")
 def redirect_lstm():
     return redirect("/tool/lstm")
+
+
+# ============================================================
+# EVALUATION & COMPARISON: PREDICTED VS ACTUAL INCOMING DATA
+# ============================================================
+
+def calculate_prediction_comparison(period="today", station="WARR"):
+    """
+    Evaluate and compare predictions vs actual incoming METAR observations
+    for BOTH XGBoost (Thunderstorm classification) and LSTM (Multi-step parameter forecast).
+    """
+    station = (station or "WARR").strip().upper()
+    now = datetime.now()
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    # 1. Fetch available observations
+    raw_obs_list = []
+    source = "Local Database"
+
+    # Try sheets / history fetcher
+    try:
+        df = fetch_history_from_source()
+        if not df.empty and "metar" in df.columns:
+            stn_col = "station" if "station" in df.columns else None
+            for _, row in df.iterrows():
+                r_stn = str(row[stn_col]).strip().upper() if stn_col else station
+                if r_stn == station and pd.notna(row.get("metar")):
+                    t_str = str(row.get("time", ""))
+                    raw_obs_list.append({
+                        "time": t_str,
+                        "metar": normalize_metar(str(row["metar"]))
+                    })
+            if raw_obs_list:
+                source = "Google Sheets" if IS_VERCEL else "History DB"
+    except Exception as e:
+        print(f"[COMPARISON] Fetch history error: {e}", file=sys.stderr)
+
+    # If records are fewer than 10, fallback/augment with live AviationWeather stream
+    if len(raw_obs_list) < 10:
+        live_metars = fetch_tool_live_metars(station=station, count=48)
+        if live_metars:
+            raw_obs_list = []
+            for m in live_metars:
+                tokens = m.split()
+                time_token = ""
+                for tok in tokens[1:3]:
+                    if tok.endswith("Z") and len(tok) == 7 and tok[:6].isdigit():
+                        time_token = tok
+                        break
+                raw_obs_list.append({
+                    "time": time_token,
+                    "metar": normalize_metar(m)
+                })
+            source = "AviationWeather (Live Stream)"
+
+    # Deduplicate while preserving chronological order
+    seen_metars = set()
+    cleaned_obs = []
+    for item in raw_obs_list:
+        m = item["metar"]
+        if m and m not in seen_metars:
+            seen_metars.add(m)
+            cleaned_obs.append(item)
+
+    # Period filtering
+    filtered_obs = []
+    for item in cleaned_obs:
+        m = item["metar"]
+        t_val = item["time"]
+        dt = None
+        if t_val:
+            try:
+                parsed_ts = pd.to_datetime(t_val, errors="coerce", utc=True)
+                if pd.notna(parsed_ts):
+                    dt = parsed_ts.to_pydatetime().replace(tzinfo=None)
+            except Exception:
+                dt = None
+
+        time_token = ""
+        tokens = m.split()
+        for tok in tokens[1:3]:
+            if tok.endswith("Z") and len(tok) == 7 and tok[:6].isdigit():
+                time_token = tok
+                break
+
+        if dt is None and time_token:
+            try:
+                day = int(time_token[:2])
+                hour = int(time_token[2:4])
+                minute = int(time_token[4:6])
+                dt = now.replace(day=day, hour=hour, minute=minute, second=0, microsecond=0)
+            except Exception:
+                dt = None
+
+        item["parsed_dt"] = dt
+        item["time_display"] = dt.strftime("%H:%M UTC") if isinstance(dt, datetime) else (time_token or "N/A")
+
+        if period == "today" and isinstance(dt, datetime):
+            if dt >= today_start:
+                filtered_obs.append(item)
+        elif period == "yesterday" and isinstance(dt, datetime):
+            yesterday_start = today_start - timedelta(days=1)
+            if yesterday_start <= dt < today_start:
+                filtered_obs.append(item)
+        else:
+            filtered_obs.append(item)
+
+    # If period filter yielded too few records, fallback to all available
+    working_obs = filtered_obs if len(filtered_obs) >= 6 else cleaned_obs
+
+    # Parse observations
+    parsed_observations = []
+    features_list = ["suhu_c", "qnh_hpa", "kec_angin_kt", "dew_point_c"]
+    for item in working_obs:
+        raw_m = item["metar"]
+        try:
+            parsed = _parse_ews_metar(raw_m)
+            has_all_feat = all(
+                parsed.get(f) is not None and math.isfinite(float(parsed.get(f)))
+                for f in features_list
+            )
+            parsed_observations.append({
+                "time": item["time_display"],
+                "raw": raw_m,
+                "parsed": parsed,
+                "valid": has_all_feat,
+            })
+        except Exception:
+            pass
+
+    # 2. XGBoost Evaluation & Comparison
+    xgb_rows = []
+    tp_count = 0
+    tn_count = 0
+    fp_count = 0
+    fn_count = 0
+
+    for i in range(3, len(parsed_observations)):
+        window = [parsed_observations[k]["raw"] for k in range(i - 3, i + 1)]
+        pred_res = run_xgboost_metar_prediction(window)
+        if pred_res.get("status") != "success":
+            continue
+
+        target_obs = parsed_observations[i]
+        target_parsed = target_obs["parsed"]
+
+        raw_upper = target_obs["raw"].upper()
+        has_ts = bool(re.search(r"(?:^|\s)(?:VCTS|[+-]?TS(?:RA|SN|GR|GS)?)(?:\s|$)", raw_upper))
+        wind_spd = target_parsed.get("kec_angin_kt", 0)
+        has_gust = "G" in target_obs["raw"] or wind_spd >= 25
+        has_cb = "CB" in raw_upper
+
+        is_actual_danger = has_ts or target_parsed.get("status_cuaca_sekarang") == 1 or wind_spd >= 28
+
+        pred_status = pred_res["model_status"]
+        pred_is_danger = pred_res["is_danger"]
+        danger_prob = pred_res["danger_probability"]
+        confidence = pred_res["confidence_percent"]
+
+        if pred_is_danger and is_actual_danger:
+            match_type = "TP"
+            match_label = "✅ Bahaya Tepat Terdeteksi"
+            match_badge = "success"
+            tp_count += 1
+        elif not pred_is_danger and not is_actual_danger:
+            match_type = "TN"
+            match_label = "✅ Kondisi Aman Terverifikasi"
+            match_badge = "success"
+            tn_count += 1
+        elif pred_is_danger and not is_actual_danger:
+            match_type = "FP"
+            match_label = "⚠️ Peringatan Dini (False Alarm)"
+            match_badge = "warning"
+            fp_count += 1
+        else:
+            match_type = "FN"
+            match_label = "❌ Bahaya Terlewat (Missed)"
+            match_badge = "danger"
+            fn_count += 1
+
+        phenomena = []
+        if has_ts: phenomena.append("Badai Guntur (TS)")
+        if has_cb: phenomena.append("Awan CB")
+        if has_gust: phenomena.append(f"Angin Kencang ({wind_spd} kt)")
+        if not phenomena: phenomena.append("Normal / Kondusif")
+
+        xgb_rows.append({
+            "step": len(xgb_rows) + 1,
+            "time": target_obs["time"],
+            "metar": target_obs["raw"],
+            "pred_status": pred_status,
+            "danger_probability": danger_prob,
+            "confidence": confidence,
+            "actual_status": "BAHAYA" if is_actual_danger else "AMAN",
+            "actual_phenomena": ", ".join(phenomena),
+            "match_type": match_type,
+            "match_label": match_label,
+            "match_badge": match_badge,
+            "is_match": match_type in ("TP", "TN"),
+        })
+
+    total_xgb = len(xgb_rows)
+    xgb_accuracy = round(((tp_count + tn_count) / total_xgb * 100), 1) if total_xgb > 0 else 0
+    xgb_danger_recall = round((tp_count / (tp_count + fn_count) * 100), 1) if (tp_count + fn_count) > 0 else 100.0
+
+    # 3. LSTM Evaluation & Comparison
+    lstm_rows = []
+    temp_errors_30m, qnh_errors_30m, wind_errors_30m, dew_errors_30m = [], [], [], []
+    temp_errors_1h, qnh_errors_1h, wind_errors_1h, dew_errors_1h = [], [], [], []
+
+    chart_labels = []
+    chart_actual_temp, chart_pred_temp_30m, chart_pred_temp_1h = [], [], []
+    chart_actual_qnh, chart_pred_qnh_30m, chart_pred_qnh_1h = [], [], []
+    chart_actual_wind, chart_pred_wind_30m, chart_pred_wind_1h = [], [], []
+    chart_actual_dew, chart_pred_dew_30m, chart_pred_dew_1h = [], [], []
+
+    valid_obs = [o for o in parsed_observations if o["valid"]]
+
+    for i in range(9, len(valid_obs) - 1):
+        seq = np.array([
+            [valid_obs[k]["parsed"][f] for f in features_list]
+            for k in range(i - 9, i + 1)
+        ], dtype=np.float32)
+
+        preds = predict_metar_multistep(seq, steps=2)
+        pred_30m = preds[0]
+        pred_1h = preds[1]
+
+        target_30m = valid_obs[i + 1]
+        act_30m = target_30m["parsed"]
+
+        has_1h = (i + 2 < len(valid_obs))
+        act_1h = valid_obs[i + 2]["parsed"] if has_1h else None
+
+        err_temp_30m = round(abs(pred_30m["suhu_c"] - act_30m["suhu_c"]), 2)
+        err_qnh_30m = round(abs(pred_30m["qnh_hpa"] - act_30m["qnh_hpa"]), 2)
+        err_wind_30m = round(abs(pred_30m["kec_angin_kt"] - act_30m["kec_angin_kt"]), 2)
+        err_dew_30m = round(abs(pred_30m["dew_point_c"] - act_30m["dew_point_c"]), 2)
+
+        temp_errors_30m.append(err_temp_30m)
+        qnh_errors_30m.append(err_qnh_30m)
+        wind_errors_30m.append(err_wind_30m)
+        dew_errors_30m.append(err_dew_30m)
+
+        err_temp_1h = round(abs(pred_1h["suhu_c"] - act_1h["suhu_c"]), 2) if has_1h else None
+        err_qnh_1h = round(abs(pred_1h["qnh_hpa"] - act_1h["qnh_hpa"]), 2) if has_1h else None
+        err_wind_1h = round(abs(pred_1h["kec_angin_kt"] - act_1h["kec_angin_kt"]), 2) if has_1h else None
+        err_dew_1h = round(abs(pred_1h["dew_point_c"] - act_1h["dew_point_c"]), 2) if has_1h else None
+
+        if has_1h:
+            temp_errors_1h.append(err_temp_1h)
+            qnh_errors_1h.append(err_qnh_1h)
+            wind_errors_1h.append(err_wind_1h)
+            dew_errors_1h.append(err_dew_1h)
+
+        time_target = target_30m["time"]
+        chart_labels.append(time_target)
+        chart_actual_temp.append(act_30m["suhu_c"])
+        chart_pred_temp_30m.append(round(pred_30m["suhu_c"], 2))
+        chart_pred_temp_1h.append(round(pred_1h["suhu_c"], 2) if has_1h else None)
+
+        chart_actual_qnh.append(act_30m["qnh_hpa"])
+        chart_pred_qnh_30m.append(round(pred_30m["qnh_hpa"], 2))
+        chart_pred_qnh_1h.append(round(pred_1h["qnh_hpa"], 2) if has_1h else None)
+
+        chart_actual_wind.append(act_30m["kec_angin_kt"])
+        chart_pred_wind_30m.append(round(pred_30m["kec_angin_kt"], 2))
+        chart_pred_wind_1h.append(round(pred_1h["kec_angin_kt"], 2) if has_1h else None)
+
+        chart_actual_dew.append(act_30m["dew_point_c"])
+        chart_pred_dew_30m.append(round(pred_30m["dew_point_c"], 2))
+        chart_pred_dew_1h.append(round(pred_1h["dew_point_c"], 2) if has_1h else None)
+
+        lstm_rows.append({
+            "step": len(lstm_rows) + 1,
+            "target_time": time_target,
+            "target_metar": target_30m["raw"],
+            "actual": {
+                "suhu_c": act_30m["suhu_c"],
+                "qnh_hpa": act_30m["qnh_hpa"],
+                "kec_angin_kt": act_30m["kec_angin_kt"],
+                "dew_point_c": act_30m["dew_point_c"],
+            },
+            "predicted_30m": {
+                "suhu_c": round(pred_30m["suhu_c"], 2),
+                "qnh_hpa": round(pred_30m["qnh_hpa"], 2),
+                "kec_angin_kt": round(pred_30m["kec_angin_kt"], 2),
+                "dew_point_c": round(pred_30m["dew_point_c"], 2),
+            },
+            "error_30m": {
+                "suhu_c": err_temp_30m,
+                "qnh_hpa": err_qnh_30m,
+                "kec_angin_kt": err_wind_30m,
+                "dew_point_c": err_dew_30m,
+            },
+            "predicted_1h": {
+                "suhu_c": round(pred_1h["suhu_c"], 2),
+                "qnh_hpa": round(pred_1h["qnh_hpa"], 2),
+                "kec_angin_kt": round(pred_1h["kec_angin_kt"], 2),
+                "dew_point_c": round(pred_1h["dew_point_c"], 2),
+            } if has_1h else None,
+            "error_1h": {
+                "suhu_c": err_temp_1h,
+                "qnh_hpa": err_qnh_1h,
+                "kec_angin_kt": err_wind_1h,
+                "dew_point_c": err_dew_1h,
+            } if has_1h else None,
+        })
+
+    def calc_mae(err_list):
+        return round(float(np.mean(err_list)), 2) if err_list else 0.0
+
+    def calc_rmse(err_list):
+        return round(float(np.sqrt(np.mean(np.square(err_list)))), 2) if err_list else 0.0
+
+    lstm_metrics = {
+        "mae_30m": {
+            "suhu_c": calc_mae(temp_errors_30m),
+            "qnh_hpa": calc_mae(qnh_errors_30m),
+            "kec_angin_kt": calc_mae(wind_errors_30m),
+            "dew_point_c": calc_mae(dew_errors_30m),
+        },
+        "rmse_30m": {
+            "suhu_c": calc_rmse(temp_errors_30m),
+            "qnh_hpa": calc_rmse(qnh_errors_30m),
+            "kec_angin_kt": calc_rmse(wind_errors_30m),
+            "dew_point_c": calc_rmse(dew_errors_30m),
+        },
+        "mae_1h": {
+            "suhu_c": calc_mae(temp_errors_1h),
+            "qnh_hpa": calc_mae(qnh_errors_1h),
+            "kec_angin_kt": calc_mae(wind_errors_1h),
+            "dew_point_c": calc_mae(dew_errors_1h),
+        },
+        "total_evaluations": len(lstm_rows),
+    }
+
+    return {
+        "status": "success",
+        "station": station,
+        "period": period,
+        "source": source,
+        "total_incoming_records": len(working_obs),
+        "xgboost": {
+            "total_cases": total_xgb,
+            "accuracy_percent": xgb_accuracy,
+            "danger_recall_percent": xgb_danger_recall,
+            "tp": tp_count,
+            "tn": tn_count,
+            "fp": fp_count,
+            "fn": fn_count,
+            "rows": xgb_rows,
+        },
+        "lstm": {
+            "metrics": lstm_metrics,
+            "rows": lstm_rows,
+            "charts": {
+                "labels": chart_labels,
+                "temp": {
+                    "actual": chart_actual_temp,
+                    "pred_30m": chart_pred_temp_30m,
+                    "pred_1h": chart_pred_temp_1h,
+                },
+                "qnh": {
+                    "actual": chart_actual_qnh,
+                    "pred_30m": chart_pred_qnh_30m,
+                    "pred_1h": chart_pred_qnh_1h,
+                },
+                "wind": {
+                    "actual": chart_actual_wind,
+                    "pred_30m": chart_pred_wind_30m,
+                    "pred_1h": chart_pred_wind_1h,
+                },
+                "dew": {
+                    "actual": chart_actual_dew,
+                    "pred_30m": chart_pred_dew_30m,
+                    "pred_1h": chart_pred_dew_1h,
+                },
+            },
+        },
+    }
+
+
+@app.route("/comparison")
+@app.route("/prediction_comparison")
+def comparison_view():
+    return common_view_context("prediction_comparison.html")
+
+
+@app.route("/api/comparison/data")
+def api_comparison_data():
+    period = request.args.get("period", "today").strip().lower()
+    station = request.args.get("station", "WARR").strip().upper()
+    try:
+        data = calculate_prediction_comparison(period=period, station=station)
+        return jsonify(data)
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"status": "error", "error": f"Gagal menghitung perbandingan: {str(e)}"}), 500
+
+
+@app.route("/api/comparison/export")
+def api_comparison_export():
+    period = request.args.get("period", "today").strip().lower()
+    station = request.args.get("station", "WARR").strip().upper()
+    try:
+        data = calculate_prediction_comparison(period=period, station=station)
+        rows_to_export = []
+        xgb_map = {r["time"]: r for r in data["xgboost"]["rows"]}
+        for r in data["lstm"]["rows"]:
+            t = r["target_time"]
+            xgb_item = xgb_map.get(t, {})
+            rows_to_export.append({
+                "Waktu_Target": t,
+                "METAR": r["target_metar"],
+                "XGB_Prediksi": xgb_item.get("pred_status", ""),
+                "XGB_Prob_Bahaya": xgb_item.get("danger_probability", ""),
+                "XGB_Aktual": xgb_item.get("actual_status", ""),
+                "XGB_Kesesuaian": xgb_item.get("match_label", ""),
+                "Suhu_Aktual": r["actual"]["suhu_c"],
+                "Suhu_Pred_30m": r["predicted_30m"]["suhu_c"],
+                "Suhu_Err_30m": r["error_30m"]["suhu_c"],
+                "QNH_Aktual": r["actual"]["qnh_hpa"],
+                "QNH_Pred_30m": r["predicted_30m"]["qnh_hpa"],
+                "QNH_Err_30m": r["error_30m"]["qnh_hpa"],
+                "Angin_Aktual": r["actual"]["kec_angin_kt"],
+                "Angin_Pred_30m": r["predicted_30m"]["kec_angin_kt"],
+                "Angin_Err_30m": r["error_30m"]["kec_angin_kt"],
+                "Dew_Aktual": r["actual"]["dew_point_c"],
+                "Dew_Pred_30m": r["predicted_30m"]["dew_point_c"],
+                "Dew_Err_30m": r["error_30m"]["dew_point_c"],
+            })
+
+        df_out = pd.DataFrame(rows_to_export)
+        buffer = BytesIO()
+        df_out.to_csv(buffer, index=False)
+        buffer.seek(0)
+        return send_file(
+            buffer,
+            as_attachment=True,
+            download_name=f"perbandingan_prediksi_aktual_{station}_{period}.csv",
+            mimetype="text/csv"
+        )
+    except Exception as e:
+        return jsonify({"status": "error", "error": str(e)}), 500
 
 
 @app.route("/api/metar/<station_code>")
