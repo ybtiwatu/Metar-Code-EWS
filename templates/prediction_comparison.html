@@ -32,21 +32,46 @@
             <div class="flex items-center gap-sm flex-wrap">
                 <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Pilih Periode:</span>
                 <div class="button-group chart-period-buttons">
-                    <button type="button" id="btnPeriodToday" class="toggle-btn chart-period-button active" onclick="loadComparisonData('today')">
-                        Hari ini (Today)
+                    <button type="button" id="btnPeriodToday" class="toggle-btn chart-period-button active" onclick="switchPeriod('today')" title="Evaluasi Hari Ini">
+                        📅 Hari Ini
                     </button>
-                    <button type="button" id="btnPeriodYesterday" class="toggle-btn chart-period-button" onclick="loadComparisonData('yesterday')">
-                        Kemarin (Yesterday)
+                    <button type="button" id="btnPeriodYesterday" class="toggle-btn chart-period-button" onclick="switchPeriod('yesterday')" title="Evaluasi Kemarin">
+                        ⏮️ Kemarin
                     </button>
-                    <button type="button" id="btnPeriodMonthly" class="toggle-btn chart-period-button" onclick="loadComparisonData('monthly')">
-                        Bulan Berjalan (MTD)
+                    <button type="button" id="btnPeriodMonthly" class="toggle-btn chart-period-button" onclick="switchPeriod('monthly')" title="Akumulasi Bulan Ini (Sedang Berjalan)">
+                        🗓️ Bulan Ini <small style="opacity: 0.85; font-size: 0.72rem; font-weight: 500;">(Berjalan)</small>
                     </button>
-                    <button type="button" id="btnPeriodYearly" class="toggle-btn chart-period-button" onclick="loadComparisonData('yearly')">
-                        Tahun Berjalan (YTD)
+                    <button type="button" id="btnPeriodYearly" class="toggle-btn chart-period-button" onclick="switchPeriod('yearly')" title="Akumulasi Tahun Ini (Sedang Berjalan)">
+                        📈 Tahun Ini <small style="opacity: 0.85; font-size: 0.72rem; font-weight: 500;">(Berjalan)</small>
                     </button>
-                    <button type="button" id="btnPeriodAll" class="toggle-btn chart-period-button" onclick="loadComparisonData('all')">
-                        Semua Data
+                    <button type="button" id="btnPeriodAll" class="toggle-btn chart-period-button" onclick="switchPeriod('all')" title="Semua Data Observasi">
+                        🗂️ Semua Data
                     </button>
+                </div>
+
+                <!-- Dropdown Opsi Pilih Bulan & Tahun Spesifik -->
+                <div class="flex items-center gap-xs" style="margin-left: 4px;">
+                    <select id="selectCustomMonth" class="form-control" style="padding: 4px 8px; font-size: 0.82rem; height: 32px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--bg-card); color: var(--text-primary); cursor: pointer;" onchange="onCustomMonthYearChange()" title="Pilih Bulan Tertentu">
+                        <option value="">-- Pilih Bulan Lain --</option>
+                        <option value="1">Januari</option>
+                        <option value="2">Februari</option>
+                        <option value="3">Maret</option>
+                        <option value="4">April</option>
+                        <option value="5">Mei</option>
+                        <option value="6">Juni</option>
+                        <option value="7">Juli</option>
+                        <option value="8">Agustus</option>
+                        <option value="9">September</option>
+                        <option value="10">Oktober</option>
+                        <option value="11">November</option>
+                        <option value="12">Desember</option>
+                    </select>
+
+                    <select id="selectCustomYear" class="form-control" style="padding: 4px 8px; font-size: 0.82rem; height: 32px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--bg-card); color: var(--text-primary); cursor: pointer;" onchange="onCustomMonthYearChange()" title="Pilih Tahun">
+                        <option value="2026">2026</option>
+                        <option value="2025">2025</option>
+                        <option value="2024">2024</option>
+                    </select>
                 </div>
             </div>
 
@@ -55,8 +80,8 @@
                 <button type="button" class="btn btn-sm btn-outline" id="refreshBtn" onclick="refreshComparison()" title="Segarkan Data">
                     ↻ Refresh
                 </button>
-                <button type="button" class="btn btn-sm btn-outline" onclick="openBackfillModal()" title="Hitung / Backfill Data Historis Massal">
-                    ⚡ Roll-up / Backfill
+                <button type="button" class="btn btn-sm btn-outline" onclick="openBackfillModal()" title="Pre-kalkulasi & Simpan Massal ke Google Sheet">
+                    ⚡ Hitung ke Sheets
                 </button>
                 <button type="button" class="btn btn-sm btn-primary" onclick="exportComparisonCsv()" title="Unduh hasil perbandingan sebagai CSV">
                     📥 Download CSV
@@ -475,18 +500,27 @@
         </div>
     </div>
 
-    <!-- Backfill Historical Evaluation Modal -->
+    <!-- Backfill / Precompute Historical Evaluation Modal -->
     <div id="backfillModal" class="hidden" style="position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.6); z-index:99999; display:flex; align-items:center; justify-content:center;">
-        <div class="card" style="width: 500px; max-width: 92%; background: var(--bg-card, #ffffff); border: 1px solid var(--border-color); border-radius: var(--radius-lg); box-shadow: 0 15px 35px rgba(0,0,0,0.3); padding: 24px;">
+        <div class="card" style="width: 520px; max-width: 92%; background: var(--bg-card, #ffffff); border: 1px solid var(--border-color); border-radius: var(--radius-lg); box-shadow: 0 15px 35px rgba(0,0,0,0.3); padding: 24px;">
             <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border-color); padding-bottom: 12px; margin-bottom: 16px;">
                 <h3 style="margin:0; font-size:1.15rem; display:flex; align-items:center; gap:8px;">
-                    <span>⚡</span> Roll-up / Backfill Data Historis
+                    <span>⚡</span> Pre-kalkulasi & Sinkronkan ke Google Sheet
                 </h3>
                 <button type="button" onclick="closeBackfillModal()" style="background:none; border:none; font-size:1.5rem; cursor:pointer; color:var(--text-muted);">&times;</button>
             </div>
-            <p style="font-size:0.85rem; color:var(--text-secondary); line-height: 1.5; margin-bottom: 16px;">
-                Mengevaluasi ribuan data historis mentah METAR di Google Sheets secara massal. Sistem akan mencocokkan prediksi LSTM (T + 60m) dan XGBoost (T) lalu menyimpan hasilnya ke akumulator <code>RingkasanEvaluasiHarian</code> agar perbandingan bulanan dan tahunan bisa dibuka seketika tanpa re-evaluasi lambat.
+            <p style="font-size:0.85rem; color:var(--text-secondary); line-height: 1.5; margin-bottom: 14px;">
+                Perhitungan evaluasi model XGBoost & LSTM dilakukan <strong>terlebih dahulu</strong> dan hasilnya disimpan permanen ke Google Sheets (lembar <code>PredictionComparison</code> dan <code>RingkasanEvaluasiHarian</code>). Dengan demikian, pembacaan dashboard berikutnya berlangsung <strong>instan (&lt; 0.1 detik)</strong> tanpa membebani server saat diakses.
             </p>
+            <div style="margin-bottom: 14px;">
+                <span style="font-size:0.8rem; font-weight:600; color:var(--text-muted); display:block; margin-bottom:6px;">Pilihan Cepat (Preset):</span>
+                <div class="flex gap-xs flex-wrap">
+                    <button type="button" class="btn btn-xs btn-outline" onclick="setBackfillPreset(3)">3 Hari Terakhir</button>
+                    <button type="button" class="btn btn-xs btn-outline" onclick="setBackfillPreset(7)">7 Hari Terakhir</button>
+                    <button type="button" class="btn btn-xs btn-outline" onclick="setBackfillPreset(14)">14 Hari Terakhir</button>
+                    <button type="button" class="btn btn-xs btn-outline" onclick="setBackfillPresetMonth()">Bulan Ini</button>
+                </div>
+            </div>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-sm mb-md">
                 <div>
                     <label style="font-size:0.8rem; font-weight:600; display:block; margin-bottom:4px;">Tanggal Mulai:</label>
@@ -498,12 +532,12 @@
                 </div>
             </div>
             <div id="backfillStatusAlert" class="alert-box alert-info mb-md hidden" style="font-size:0.85rem; padding:10px 14px;">
-                <span id="backfillStatusText">Sedang memproses evaluasi massal...</span>
+                <span id="backfillStatusText">Sedang memproses perhitungan & menyimpan ke Sheets...</span>
             </div>
             <div style="display:flex; justify-content:flex-end; gap:10px;">
                 <button type="button" class="btn btn-sm btn-outline" onclick="closeBackfillModal()">Tutup</button>
                 <button type="button" class="btn btn-sm btn-primary" id="btnRunBackfill" onclick="executeBackfill()">
-                    🚀 Jalankan Evaluasi
+                    🚀 Mulai Hitung & Simpan
                 </button>
             </div>
         </div>
@@ -577,14 +611,34 @@
         renderLstmOverlayChart();
     }
 
+    const MONTH_NAMES_ID = [
+        "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+        "Juli", "Agustus", "September", "Oktober", "November", "Desember"
+    ];
+
+    let selectedYear = new Date().getFullYear();
+    let selectedMonth = new Date().getMonth() + 1;
+
+    function setBackfillPreset(days) {
+        const end = new Date();
+        const start = new Date();
+        start.setDate(end.getDate() - days);
+        document.getElementById('backfillStartDate').value = start.toISOString().split('T')[0];
+        document.getElementById('backfillEndDate').value = end.toISOString().split('T')[0];
+    }
+
+    function setBackfillPresetMonth() {
+        const today = new Date().toISOString().split('T')[0];
+        const firstOfMonth = today.slice(0, 8) + '01';
+        document.getElementById('backfillStartDate').value = firstOfMonth;
+        document.getElementById('backfillEndDate').value = today;
+    }
+
     function openBackfillModal() {
         const modal = document.getElementById('backfillModal');
         if (modal) {
             modal.classList.remove('hidden');
-            const today = new Date().toISOString().split('T')[0];
-            const firstOfMonth = today.slice(0, 8) + '01';
-            document.getElementById('backfillStartDate').value = firstOfMonth;
-            document.getElementById('backfillEndDate').value = today;
+            setBackfillPresetMonth();
             const alertBox = document.getElementById('backfillStatusAlert');
             if (alertBox) alertBox.classList.add('hidden');
         }
@@ -609,7 +663,7 @@
 
         alertBox.classList.remove('hidden', 'alert-success', 'alert-error');
         alertBox.classList.add('alert-info');
-        alertText.textContent = `Sedang mengevaluasi data dari ${start} s/d ${end}... Mohon tunggu.`;
+        alertText.textContent = `Sedang melakukan pre-kalkulasi data dari ${start} s/d ${end} & menyimpannya ke Google Sheets...`;
         btn.disabled = true;
 
         try {
@@ -618,7 +672,7 @@
             if (resp.ok && res.status === 'success') {
                 alertBox.classList.remove('alert-info');
                 alertBox.classList.add('alert-success');
-                alertText.textContent = `✅ Berhasil! ${res.summary.processed_days} hari berhasil dievaluasi dan di-roll-up ke RingkasanEvaluasiHarian.`;
+                alertText.textContent = `✅ Berhasil! Hasil evaluasi ${res.summary ? res.summary.success : ''} hari berhasil dihitung dan tersimpan di Google Sheets.`;
                 setTimeout(() => {
                     closeBackfillModal();
                     loadComparisonData(currentPeriod);
@@ -635,8 +689,47 @@
         }
     }
 
-    async function loadComparisonData(period) {
+    function switchPeriod(p) {
+        currentPeriod = p;
+        const now = new Date();
+        selectedYear = now.getFullYear();
+        selectedMonth = now.getMonth() + 1;
+
+        // Reset month selector when switching to fixed periods
+        const monthSelect = document.getElementById('selectCustomMonth');
+        const yearSelect = document.getElementById('selectCustomYear');
+        if (monthSelect) {
+            monthSelect.value = (p === 'monthly') ? String(selectedMonth) : '';
+        }
+        if (yearSelect) {
+            yearSelect.value = String(selectedYear);
+        }
+
+        loadComparisonData(currentPeriod);
+    }
+
+    function onCustomMonthYearChange() {
+        const monthSelect = document.getElementById('selectCustomMonth');
+        const yearSelect = document.getElementById('selectCustomYear');
+        const m = monthSelect.value ? parseInt(monthSelect.value) : null;
+        const y = yearSelect.value ? parseInt(yearSelect.value) : new Date().getFullYear();
+
+        if (m) {
+            currentPeriod = 'monthly';
+            selectedMonth = m;
+            selectedYear = y;
+            loadComparisonData('monthly', { year: y, month: m });
+        } else if (y) {
+            currentPeriod = 'yearly';
+            selectedYear = y;
+            loadComparisonData('yearly', { year: y });
+        }
+    }
+
+    async function loadComparisonData(period, options) {
         currentPeriod = period || 'today';
+        options = options || {};
+
         const pButtons = {
             today: document.getElementById('btnPeriodToday'),
             yesterday: document.getElementById('btnPeriodYesterday'),
@@ -645,7 +738,10 @@
             all: document.getElementById('btnPeriodAll')
         };
         for (const k in pButtons) {
-            if (pButtons[k]) pButtons[k].classList.toggle('active', currentPeriod === k);
+            if (pButtons[k]) {
+                const isActive = (currentPeriod === k) && (!options.month || options.month === (new Date().getMonth() + 1));
+                pButtons[k].classList.toggle('active', isActive);
+            }
         }
 
         const loading = document.getElementById('comparisonLoading');
@@ -658,19 +754,32 @@
         if (errorBox) errorBox.classList.add('hidden');
         if (refreshBtn) refreshBtn.classList.add('rotating');
 
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 9000); // Max 9s timeout
+
         try {
-            // 1. Fetch Fast Roll-up Summary Accumulators (<0.05s)
-            const summaryResp = await fetch(`/api/comparison/summary?period=${currentPeriod}&station=WARR`);
-            if (summaryResp.ok) {
-                summaryData = await summaryResp.json();
-                renderSummaryMetrics(summaryData);
+            // Build API URL
+            let summaryUrl = `/api/comparison/summary?period=${currentPeriod}&station=WARR`;
+            if (options.year) summaryUrl += `&year=${options.year}`;
+            if (options.month) summaryUrl += `&month=${options.month}`;
+
+            const detailPeriod = (currentPeriod === 'monthly' || currentPeriod === 'yearly') ? 'today' : currentPeriod;
+            const detailUrl = `/api/comparison/data?period=${detailPeriod}&station=WARR`;
+
+            // Run concurrent fast queries
+            const [summaryResp, detailResp] = await Promise.allSettled([
+                fetch(summaryUrl, { signal: controller.signal }),
+                fetch(detailUrl, { signal: controller.signal })
+            ]);
+            clearTimeout(timeoutId);
+
+            if (summaryResp.status === 'fulfilled' && summaryResp.value.ok) {
+                summaryData = await summaryResp.value.json();
+                renderSummaryMetrics(summaryData, options);
             }
 
-            // 2. Fetch Granular Observations for Charts and Logs
-            const detailPeriod = (currentPeriod === 'monthly' || currentPeriod === 'yearly') ? 'today' : currentPeriod;
-            const detailResp = await fetch(`/api/comparison/data?period=${detailPeriod}&station=WARR`);
-            if (detailResp.ok) {
-                comparisonData = await detailResp.json();
+            if (detailResp.status === 'fulfilled' && detailResp.value.ok) {
+                comparisonData = await detailResp.value.json();
                 renderDetailedObservations(comparisonData, currentPeriod);
             }
 
@@ -679,29 +788,69 @@
         } catch (e) {
             console.error('[COMPARISON] Fetch error:', e);
             if (loading) loading.classList.add('hidden');
-            if (errorBox) {
-                document.getElementById('comparisonErrorText').textContent = e.message || 'Terjadi kesalahan saat memuat data.';
+            if (content) content.classList.remove('hidden'); // Still reveal content if partial
+            if (errorBox && !summaryData) {
+                document.getElementById('comparisonErrorText').textContent = e.name === 'AbortError'
+                    ? 'Waktu muat melebihi batas. Silakan gunakan tombol "⚡ Hitung ke Sheets" untuk pre-kalkulasi terlebih dahulu.'
+                    : (e.message || 'Terjadi kesalahan saat memuat data.');
                 errorBox.classList.remove('hidden');
             }
         } finally {
+            clearTimeout(timeoutId);
             if (refreshBtn) refreshBtn.classList.remove('rotating');
         }
     }
 
     function refreshComparison() {
-        loadComparisonData(currentPeriod);
+        loadComparisonData(currentPeriod, { year: selectedYear, month: selectedMonth });
     }
 
     function exportComparisonCsv() {
-        window.location.href = `/api/comparison/export?period=${currentPeriod}&station=WARR`;
+        let url = `/api/comparison/export?period=${currentPeriod}&station=WARR`;
+        if (selectedYear) url += `&year=${selectedYear}`;
+        if (selectedMonth) url += `&month=${selectedMonth}`;
+        window.location.href = url;
     }
 
-    function renderSummaryMetrics(s) {
+    function renderSummaryMetrics(s, options) {
         if (!s) return;
+        options = options || {};
         const meta = s.metadata || {};
         const sourceLabel = meta.source || 'RingkasanEvaluasiHarian';
-        const dateRange = meta.start_date === meta.end_date ? meta.start_date : `${meta.start_date} s/d ${meta.end_date}`;
-        document.getElementById('sourceBadge').textContent = `${dateRange} (${sourceLabel})`;
+        const now = new Date();
+        const curYear = now.getFullYear();
+        const curMonth = now.getMonth() + 1;
+        const curDay = now.getDate();
+
+        // Human-friendly period badge
+        let periodLabel = '';
+        if (currentPeriod === 'today') {
+            periodLabel = `📅 Hari Ini (${curDay} ${MONTH_NAMES_ID[curMonth - 1]} ${curYear})`;
+        } else if (currentPeriod === 'yesterday') {
+            const yDate = new Date(now);
+            yDate.setDate(now.getDate() - 1);
+            periodLabel = `⏮️ Kemarin (${yDate.getDate()} ${MONTH_NAMES_ID[yDate.getMonth()]} ${yDate.getFullYear()})`;
+        } else if (currentPeriod === 'monthly') {
+            const m = options.month || selectedMonth || curMonth;
+            const y = options.year || selectedYear || curYear;
+            const mName = MONTH_NAMES_ID[m - 1] || `Bulan ${m}`;
+            if (m === curMonth && y === curYear) {
+                periodLabel = `🗓️ Bulan Ini: ${mName} ${y} (Sedang Berjalan s/d ${curDay} ${mName})`;
+            } else {
+                periodLabel = `🗓️ Bulan: ${mName} ${y} (Selesai / Arsip)`;
+            }
+        } else if (currentPeriod === 'yearly') {
+            const y = options.year || selectedYear || curYear;
+            if (y === curYear) {
+                periodLabel = `📈 Tahun Ini: ${y} (Sedang Berjalan s/d ${curDay} ${MONTH_NAMES_ID[curMonth - 1]})`;
+            } else {
+                periodLabel = `📈 Tahun: ${y} (Penuh / Arsip)`;
+            }
+        } else {
+            periodLabel = `🗂️ Semua Data Observasi Terhitung`;
+        }
+
+        document.getElementById('sourceBadge').textContent = `${periodLabel} • ${sourceLabel}`;
 
         const xgb = s.xgboost_classification || {};
         const lstm = s.lstm_regression || {};
@@ -712,16 +861,16 @@
         document.getElementById('xgbOverallAccBadge').textContent = `${xgb.overall_accuracy_percent || 0}%`;
 
         if (lstm.suhu_c) {
-            document.getElementById('lstmMaeTempVal').textContent = `± ${lstm.suhu_c.mae} °C`;
-            document.getElementById('lstmRmseTemp').textContent = `RMSE: ${lstm.suhu_c.rmse} °C (+60m)`;
+            document.getElementById('lstmMaeTempVal').textContent = lstm.suhu_c.mae !== null ? `± ${lstm.suhu_c.mae} °C` : '-- °C';
+            document.getElementById('lstmRmseTemp').textContent = lstm.suhu_c.rmse !== null ? `RMSE: ${lstm.suhu_c.rmse} °C (+60m)` : 'RMSE: -- °C';
         }
         if (lstm.tekanan_qnh_hpa) {
-            document.getElementById('lstmMaeQnhVal').textContent = `± ${lstm.tekanan_qnh_hpa.mae} hPa`;
-            document.getElementById('lstmRmseQnh').textContent = `RMSE: ${lstm.tekanan_qnh_hpa.rmse} hPa (+60m)`;
+            document.getElementById('lstmMaeQnhVal').textContent = lstm.tekanan_qnh_hpa.mae !== null ? `± ${lstm.tekanan_qnh_hpa.mae} hPa` : '-- hPa';
+            document.getElementById('lstmRmseQnh').textContent = lstm.tekanan_qnh_hpa.rmse !== null ? `RMSE: ${lstm.tekanan_qnh_hpa.rmse} hPa (+60m)` : 'RMSE: -- hPa';
         }
         if (lstm.kecepatan_angin_kt) {
-            document.getElementById('lstmMaeWindVal').textContent = `± ${lstm.kecepatan_angin_kt.mae} kt`;
-            document.getElementById('lstmRmseWind').textContent = `RMSE: ${lstm.kecepatan_angin_kt.rmse} kt (+60m)`;
+            document.getElementById('lstmMaeWindVal').textContent = lstm.kecepatan_angin_kt.mae !== null ? `± ${lstm.kecepatan_angin_kt.mae} kt` : '-- kt';
+            document.getElementById('lstmRmseWind').textContent = lstm.kecepatan_angin_kt.rmse !== null ? `RMSE: ${lstm.kecepatan_angin_kt.rmse} kt (+60m)` : 'RMSE: -- kt';
         }
 
         // Render 3x3 Confusion Matrix

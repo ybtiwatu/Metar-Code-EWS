@@ -1,3 +1,3 @@
 station,tanggal,total_samples_lstm,sum_abs_error_suhu,sum_sq_error_suhu,sum_abs_error_angin,sum_sq_error_angin,sum_abs_error_qnh,sum_sq_error_qnh,total_samples_xgb,xgb_total_benar,cm_low_low,cm_low_medium,cm_low_high,cm_medium_low,cm_medium_medium,cm_medium_high,cm_high_low,cm_high_medium,cm_high_high,updated_at
-WARR,2026-09-28,0,0.0,0.0,0.0,0.0,0.0,0.0,0,0,0,0,0,0,0,0,0,0,0,2026-09-29T15:32:45Z
-WARR,2026-09-29,13,6.73,6.0269,32.54,109.206,10.88,18.5492,21,20,20,0,0,0,0,0,1,0,0,2026-09-29T15:32:46Z
+WARR,2026-09-28,0,0.0,0.0,0.0,0.0,0.0,0.0,0,0,0,0,0,0,0,0,0,0,0,2026-09-29T16:06:29Z
+WARR,2026-09-29,13,6.73,6.0269,32.54,109.206,10.88,18.5492,21,20,20,0,0,0,0,0,1,0,0,2026-09-29T16:06:30Z

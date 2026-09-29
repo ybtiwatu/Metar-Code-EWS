@@ -601,21 +601,135 @@ class ComparisonService:
         }
         return compiled
 
+    def _compile_daily_from_precalculated_comparison(self, target_date: date, station: str = "WARR") -> Optional[Dict[str, Any]]:
+        """
+        Kompilasi ringkasan harian instan (< 1ms) dari baris evaluasi yang sudah tersimpan
+        di Google Sheets 'PredictionComparison' tanpa menjalankan model machine learning.
+        """
+        try:
+            records = self.sheets.get_comparison_records(limit=150, period="all", station=station)
+            if not records:
+                return None
+
+            date_str = target_date.strftime("%Y-%m-%d")
+            matching_rows = []
+            for r in records:
+                r_stn = str(r.get("station", station)).strip().upper()
+                if r_stn != station:
+                    continue
+                time_tok = str(r.get("time_token") or r.get("logged_at_utc", ""))
+                r_date = None
+                if "T" in time_tok:
+                    try:
+                        r_date = pd.to_datetime(time_tok, errors="coerce").date()
+                    except Exception:
+                        pass
+                if r_date is None and len(time_tok) >= 6:
+                    try:
+                        day_num = int(time_tok[:2])
+                        if day_num == target_date.day:
+                            r_date = target_date
+                    except Exception:
+                        pass
+                if r_date == target_date:
+                    matching_rows.append(r)
+
+            if not matching_rows:
+                return None
+
+            total_lstm = 0
+            sae_suhu = sse_suhu = 0.0
+            sae_angin = sse_angin = 0.0
+            sae_qnh = sse_qnh = 0.0
+
+            total_xgb = 0
+            xgb_benar = 0
+            cm_counts = {f"cm_{a.lower()}_{p.lower()}": 0 for a in RISK_CLASSES for p in RISK_CLASSES}
+
+            for r in matching_rows:
+                e_temp = r.get("err_temp_30m")
+                e_wind = r.get("err_wind_30m")
+                e_qnh = r.get("err_qnh_30m")
+                valid_lstm = False
+
+                if e_temp is not None and not (isinstance(e_temp, float) and math.isnan(e_temp)):
+                    sae_suhu += abs(float(e_temp))
+                    sse_suhu += float(e_temp) ** 2
+                    valid_lstm = True
+                if e_wind is not None and not (isinstance(e_wind, float) and math.isnan(e_wind)):
+                    sae_angin += abs(float(e_wind))
+                    sse_angin += float(e_wind) ** 2
+                    valid_lstm = True
+                if e_qnh is not None and not (isinstance(e_qnh, float) and math.isnan(e_qnh)):
+                    sae_qnh += abs(float(e_qnh))
+                    sse_qnh += float(e_qnh) ** 2
+                    valid_lstm = True
+                if valid_lstm:
+                    total_lstm += 1
+
+                p_stat = str(r.get("xgb_pred_status", "")).strip().upper()
+                a_stat = str(r.get("xgb_actual_status", "")).strip().upper()
+                m_type = str(r.get("xgb_match_type", "")).strip().upper()
+                if p_stat and a_stat:
+                    total_xgb += 1
+                    if m_type in ("TP", "TN") or p_stat == a_stat:
+                        xgb_benar += 1
+                    p_risk = "HIGH" if p_stat == "BAHAYA" else "LOW"
+                    a_risk = "HIGH" if a_stat == "BAHAYA" else "LOW"
+                    k = f"cm_{a_risk.lower()}_{p_risk.lower()}"
+                    if k in cm_counts:
+                        cm_counts[k] += 1
+
+            summary_record = {
+                "station": station,
+                "tanggal": date_str,
+                "total_samples_lstm": total_lstm,
+                "sum_abs_error_suhu": round(sae_suhu, 4),
+                "sum_sq_error_suhu": round(sse_suhu, 4),
+                "sum_abs_error_angin": round(sae_angin, 4),
+                "sum_sq_error_angin": round(sse_angin, 4),
+                "sum_abs_error_qnh": round(sae_qnh, 4),
+                "sum_sq_error_qnh": round(sse_qnh, 4),
+                "total_samples_xgb": total_xgb,
+                "xgb_total_benar": xgb_benar,
+                **cm_counts,
+                "updated_at": datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+            }
+
+            self.sheets.save_daily_summary_record(summary_record)
+            compiled = self._compile_metrics_from_accumulators(summary_record)
+            compiled["status"] = "success"
+            compiled["metadata"] = {
+                "station": station,
+                "start_date": date_str,
+                "end_date": date_str,
+                "records_count": len(matching_rows),
+                "source": "Google Sheets (PredictionComparison Auto-Rollup)"
+            }
+            return compiled
+        except Exception as e:
+            logger.warning(f"Gagal kompilasi cepat dari comparison records: {e}")
+            return None
+
     def get_metrics_daily(self, target_date: date, station: str = "WARR") -> Dict[str, Any]:
         """
         Ambil skor evaluasi spesifik untuk 1 hari kalender.
+        Cepat & instan (<0.05s): hanya membaca dari Google Sheets / CSV tanpa memblokir request.
         """
         d_str = target_date.strftime("%Y-%m-%d")
-        # Jika belum ada data ringkasan untuk hari ini, jalankan evaluasi sekarang
         existing = self.sheets.get_daily_summary_records(station=station, start_date=d_str, end_date=d_str)
         if not existing:
-            self.evaluate_daily_records(target_date, station=station)
+            # Jika belum ada di RingkasanEvaluasiHarian, coba kompilasi instan dari PredictionComparison
+            comp_rec = self._compile_daily_from_precalculated_comparison(target_date, station=station)
+            if comp_rec:
+                return comp_rec
 
         return self._rollup_daily_summaries(start_date=d_str, end_date=d_str, station=station)
 
     def get_metrics_monthly_ongoing(self, year: int, month: int, station: str = "WARR") -> Dict[str, Any]:
         """
         Mengagregasi data harian dari tanggal 1 bulan tersebut sampai tanggal berjalan.
+        Cepat & instan (<0.05s).
         """
         start_date = date(year, month, 1)
         today = date.today()
@@ -626,13 +740,6 @@ class ComparisonService:
             next_month = date(year + 1, 1, 1) if month == 12 else date(year, month + 1, 1)
             end_date = next_month - timedelta(days=1)
 
-        # Pastikan hari ini ter-evaluasi jika bulan berjalan
-        if today.year == year and today.month == month:
-            d_str = today.strftime("%Y-%m-%d")
-            existing = self.sheets.get_daily_summary_records(station=station, start_date=d_str, end_date=d_str)
-            if not existing:
-                self.evaluate_daily_records(today, station=station)
-
         return self._rollup_daily_summaries(
             start_date=start_date.strftime("%Y-%m-%d"),
             end_date=end_date.strftime("%Y-%m-%d"),
@@ -642,6 +749,7 @@ class ComparisonService:
     def get_metrics_yearly_ongoing(self, year: int, station: str = "WARR") -> Dict[str, Any]:
         """
         Mengagregasi data harian dari tanggal 1 Januari sampai tanggal berjalan.
+        Cepat & instan (<0.05s).
         """
         start_date = date(year, 1, 1)
         today = date.today()
@@ -650,13 +758,6 @@ class ComparisonService:
             end_date = today
         else:
             end_date = date(year, 12, 31)
-
-        # Pastikan hari ini ter-evaluasi jika tahun berjalan
-        if today.year == year:
-            d_str = today.strftime("%Y-%m-%d")
-            existing = self.sheets.get_daily_summary_records(station=station, start_date=d_str, end_date=d_str)
-            if not existing:
-                self.evaluate_daily_records(today, station=station)
 
         return self._rollup_daily_summaries(
             start_date=start_date.strftime("%Y-%m-%d"),

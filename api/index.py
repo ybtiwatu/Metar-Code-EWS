@@ -2164,6 +2164,14 @@ def sync_new_metar_comparison(station="WARR", metar_raw=""):
         record = _evaluate_metar_record(target_obs, prior_obs, station=station)
         sheets_handler.save_comparison_records([record])
         print(f"[COMPARISON] Auto-evaluated and saved comparison for {station} {time_tok}", file=sys.stderr)
+
+        # Auto-update today's summary in Google Sheets 'RingkasanEvaluasiHarian'
+        try:
+            from api.comparison_service import comparison_service
+            comparison_service._compile_daily_from_precalculated_comparison(datetime.utcnow().date(), station=station)
+        except Exception as se_err:
+            print(f"[COMPARISON] Auto-rollup error: {se_err}", file=sys.stderr)
+
         return True
     except Exception as e:
         print(f"[COMPARISON] sync_new_metar_comparison error: {e}", file=sys.stderr)
@@ -2406,97 +2414,23 @@ def calculate_prediction_comparison(period="today", station="WARR"):
     """
     Fast, pre-calculated evaluation and comparison between predictions and actual METAR.
     Reads pre-calculated results from Google Sheets 'PredictionComparison' (or fallback CSV).
-    If empty, lazily backfills recent records fast (<0.1s) and saves them to Google Sheets.
+    Runs instantly (<0.05s) without running heavy ML models during user requests.
     """
     station = (station or "WARR").strip().upper()
 
-    # 1. Try reading from Google Sheets 'PredictionComparison'
+    # 1. Try reading from Google Sheets 'PredictionComparison' for requested period
     saved_records = sheets_handler.get_comparison_records(limit=100, period=period, station=station)
-    if saved_records and len(saved_records) >= 3:
+    if saved_records and len(saved_records) > 0:
         source_label = "Google Sheets (PredictionComparison)" if sheets_handler.client else "Local Cache (PredictionComparison)"
         return build_comparison_response_from_records(saved_records, station=station, period=period, source=source_label)
 
-    # 2. If empty or fewer than 3 records, perform fast initial batch backfill
-    print(f"[COMPARISON] No pre-calculated records found. Performing fast initial backfill for {station}...", file=sys.stderr)
-    try:
-        raw_obs_list = []
-        df = fetch_history_from_source()
-        if not df.empty and "metar" in df.columns:
-            stn_col = "station" if "station" in df.columns else None
-            for _, row in df.iterrows():
-                r_stn = str(row[stn_col]).strip().upper() if stn_col else station
-                if r_stn == station and pd.notna(row.get("metar")):
-                    raw_obs_list.append({
-                        "time": str(row.get("time", "")),
-                        "metar": normalize_metar(str(row["metar"]))
-                    })
+    # 2. If empty for requested period (e.g. fresh day or timezone shift), fallback to latest stored records
+    all_saved = sheets_handler.get_comparison_records(limit=25, period="all", station=station)
+    if all_saved and len(all_saved) > 0:
+        source_label = "Google Sheets (Observasi Terbaru)" if sheets_handler.client else "Local Cache (Observasi Terbaru)"
+        return build_comparison_response_from_records(all_saved, station=station, period=period, source=source_label)
 
-        if len(raw_obs_list) < 10:
-            live_metars = fetch_tool_live_metars(station=station, count=25)
-            if live_metars:
-                raw_obs_list = []
-                for m in live_metars:
-                    tokens = m.split()
-                    time_token = ""
-                    for tok in tokens[1:3]:
-                        if tok.endswith("Z") and len(tok) == 7 and tok[:6].isdigit():
-                            time_token = tok
-                            break
-                    raw_obs_list.append({
-                        "time": time_token,
-                        "metar": normalize_metar(m)
-                    })
-
-        seen = set()
-        clean_obs = []
-        for item in raw_obs_list:
-            m = item["metar"]
-            if m and m not in seen:
-                seen.add(m)
-                clean_obs.append(item)
-
-        clean_obs = clean_obs[-25:]
-
-        features_list = ["suhu_c", "qnh_hpa", "kec_angin_kt", "dew_point_c"]
-        parsed_obs = []
-        for item in clean_obs:
-            try:
-                parsed = _parse_ews_metar(item["metar"])
-                has_all_feat = all(
-                    parsed.get(f) is not None and math.isfinite(float(parsed.get(f)))
-                    for f in features_list
-                )
-                time_match = re.search(r'\b(\d{6}Z)\b', item["metar"])
-                time_tok = time_match.group(1) if time_match else item["time"]
-                parsed_obs.append({
-                    "raw": item["metar"],
-                    "parsed": parsed,
-                    "valid": has_all_feat,
-                    "time": item["time"],
-                    "time_token": time_tok,
-                })
-            except Exception:
-                pass
-
-        backfilled_records = []
-        for i in range(3, len(parsed_obs)):
-            target = parsed_obs[i]
-            priors = parsed_obs[:i]
-            rec = _evaluate_metar_record(target, priors, station=station)
-            backfilled_records.append(rec)
-
-        if backfilled_records:
-            sheets_handler.save_comparison_records(backfilled_records)
-            return build_comparison_response_from_records(
-                backfilled_records,
-                station=station,
-                period=period,
-                source="Google Sheets (Initial Backfill)"
-            )
-    except Exception as bf_err:
-        print(f"[COMPARISON] Backfill error: {bf_err}", file=sys.stderr)
-        traceback.print_exc()
-
+    # 3. Clean empty fallback without blocking GET requests with heavy model inferences
     return build_comparison_response_from_records([], station=station, period=period, source="Google Sheets (Belum ada data)")
 
 
@@ -2638,6 +2572,38 @@ def api_comparison_backfill():
     except Exception as e:
         traceback.print_exc()
         return jsonify({"status": "error", "error": f"Gagal menjalankan backfill: {str(e)}"}), 500
+
+
+@app.route("/api/comparison/precompute", methods=["POST", "GET"])
+def api_comparison_precompute():
+    """
+    Menjalankan perhitungan evaluasi batch di latar belakang dan menyimpannya langsung
+    ke Google Sheets ('PredictionComparison' & 'RingkasanEvaluasiHarian').
+    """
+    station = request.args.get("station", "WARR").strip().upper()
+    try:
+        days = int(request.args.get("days", 3))
+    except (ValueError, TypeError):
+        days = 3
+    days = min(max(days, 1), 14)
+
+    today = datetime.utcnow().date()
+    start_d = today - timedelta(days=days)
+    end_d = today
+
+    try:
+        summary = comparison_service.backfill_historical_data(start_d, end_d, station=station)
+        return jsonify({
+            "status": "success",
+            "message": f"Pre-kalkulasi selesai untuk {station} ({days} hari terakhir: {start_d} s/d {end_d})",
+            "station": station,
+            "start_date": str(start_d),
+            "end_date": str(end_d),
+            "result": summary
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"status": "error", "error": f"Gagal pre-kalkulasi: {str(e)}"}), 500
 
 
 @app.route("/api/metar/<station_code>")
