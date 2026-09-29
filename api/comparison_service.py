@@ -106,6 +106,11 @@ class ComparisonService:
         station = (station or "WARR").strip().upper()
         date_str = target_date.strftime("%Y-%m-%d")
 
+        # Cek cepat: Jika hasil hari ini sudah ada di PredictionComparison, kompilasi instan (< 1ms)
+        precalc = self._compile_daily_from_precalculated_comparison(target_date, station=station)
+        if precalc and precalc.get("lstm_regression", {}).get("total_evaluasi", 0) > 0:
+            return True
+
         # 1. Ambil data observasi dari source
         raw_df = fetch_history_from_source()
         raw_records = []
@@ -135,6 +140,10 @@ class ComparisonService:
                     continue
 
                 dt_utc = parsed_dt.tz_convert('UTC').tz_localize(None) if parsed_dt.tzinfo else parsed_dt
+
+                # Optimasi: Hanya parse observasi yang berada dalam rentang target_date (+/- 1 hari untuk konteks lag)
+                if abs((dt_utc.date() - target_date).days) > 1:
+                    continue
 
                 try:
                     parsed_metrics = _parse_ews_metar(raw_m)
@@ -235,25 +244,6 @@ class ComparisonService:
             except Exception as live_err:
                 logger.warning(f"Live fetch fallback warning: {live_err}")
 
-            features_list = ["suhu_c", "qnh_hpa", "kec_angin_kt", "dew_point_c"]
-            is_valid_metrics = all(
-                parsed_metrics.get(f) is not None and math.isfinite(float(parsed_metrics.get(f)))
-                for f in features_list
-            )
-
-            raw_records.append({
-                "timestamp": dt_utc,
-                "date": dt_utc.date(),
-                "raw_metar": raw_m,
-                "parsed": parsed_metrics,
-                "valid": is_valid_metrics,
-                "suhu_aktual": _safe_float(parsed_metrics.get("suhu_c")),
-                "kecepatan_angin_aktual": _safe_float(parsed_metrics.get("kec_angin_kt")),
-                "qnh_aktual": _safe_float(parsed_metrics.get("qnh_hpa")),
-                "dew_point_aktual": _safe_float(parsed_metrics.get("dew_point_c")),
-                "risiko_aktual": _classify_actual_risk(raw_m, parsed_metrics)
-            })
-
         if not raw_records:
             logger.warning(f"[{station}] Tidak ada observasi valid untuk {date_str}")
             return False
@@ -263,18 +253,43 @@ class ComparisonService:
 
         # 2. Generate Prediksi LSTM (+60 menit ke depan) dan Prediksi XGBoost per observasi
         features_list = ["suhu_c", "qnh_hpa", "kec_angin_kt", "dew_point_c"]
+        ews_model, ews_features = None, None
+        try:
+            from api.index import _load_ews_assets
+            ews_model, ews_features = _load_ews_assets()
+        except Exception as e:
+            logger.warning(f"Gagal memuat model XGBoost EWS: {e}")
+
         for idx in range(len(raw_records)):
             curr = raw_records[idx]
 
-            # XGBoost prediction pada waktu T (menggunakan 4 observasi terakhir: T-3, T-2, T-1, T)
-            if idx >= 3:
-                window_4 = [raw_records[k]["raw_metar"] for k in range(idx - 3, idx + 1)]
-                xgb_res = run_xgboost_metar_prediction(window_4, include_shap=False)
-                if xgb_res.get("status") == "success":
-                    d_prob = xgb_res.get("danger_probability", 0.0)
+            # XGBoost prediction pada waktu T (vektor fitur langsung dari parsed metrics tanpa re-parse)
+            if idx >= 3 and ews_model is not None and ews_features is not None:
+                try:
+                    cp = curr["parsed"]
+                    f_dict = {
+                        "arah_angin_deg": 0.0 if math.isnan(cp["arah_angin_deg"]) else float(cp["arah_angin_deg"]),
+                        "kec_angin_kt": 0.0 if math.isnan(cp["kec_angin_kt"]) else float(cp["kec_angin_kt"]),
+                        "visibilitas_m": 10000.0 if math.isnan(cp["visibilitas_m"]) else float(cp["visibilitas_m"]),
+                        "suhu_c": float(cp["suhu_c"]),
+                        "dew_point_c": float(cp["dew_point_c"]),
+                        "qnh_hpa": float(cp["qnh_hpa"]),
+                        "status_cuaca_sekarang": int(cp["status_cuaca_sekarang"]),
+                    }
+                    lag_sources = {"suhu_c": "suhu_c", "qnh_hpa": "qnh_hpa", "kec_angin_kt": "kec_angin_kt", "dew_point_c": "dew_point_c"}
+                    for lag in range(1, 4):
+                        prev_p = raw_records[idx - lag]["parsed"]
+                        for f_name, o_key in lag_sources.items():
+                            val = prev_p.get(o_key)
+                            f_dict[f"{f_name}_lag_{lag}"] = float(val) if (val is not None and math.isfinite(val)) else 0.0
+
+                    f_vec = [[f_dict.get(name, 0.0) for name in ews_features]]
+                    probs = ews_model.predict_proba(f_vec)[0]
+                    c_idx = list(ews_model.classes_).index(1) if 1 in ews_model.classes_ else 1
+                    d_prob = float(probs[c_idx]) * 100.0
                     curr["prediksi_risiko_xgb"] = _classify_predicted_risk(d_prob)
                     curr["xgb_prob_bahaya"] = d_prob
-                else:
+                except Exception:
                     curr["prediksi_risiko_xgb"] = None
             else:
                 curr["prediksi_risiko_xgb"] = None
