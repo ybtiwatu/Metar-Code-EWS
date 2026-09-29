@@ -38,6 +38,12 @@
                     <button type="button" id="btnPeriodYesterday" class="toggle-btn chart-period-button" onclick="loadComparisonData('yesterday')">
                         Kemarin (Yesterday)
                     </button>
+                    <button type="button" id="btnPeriodMonthly" class="toggle-btn chart-period-button" onclick="loadComparisonData('monthly')">
+                        Bulan Berjalan (MTD)
+                    </button>
+                    <button type="button" id="btnPeriodYearly" class="toggle-btn chart-period-button" onclick="loadComparisonData('yearly')">
+                        Tahun Berjalan (YTD)
+                    </button>
                     <button type="button" id="btnPeriodAll" class="toggle-btn chart-period-button" onclick="loadComparisonData('all')">
                         Semua Data
                     </button>
@@ -48,6 +54,9 @@
                 <span class="tool-counter-badge" id="sourceBadge">Memuat data...</span>
                 <button type="button" class="btn btn-sm btn-outline" id="refreshBtn" onclick="refreshComparison()" title="Segarkan Data">
                     ↻ Refresh
+                </button>
+                <button type="button" class="btn btn-sm btn-outline" onclick="openBackfillModal()" title="Hitung / Backfill Data Historis Massal">
+                    ⚡ Roll-up / Backfill
                 </button>
                 <button type="button" class="btn btn-sm btn-primary" onclick="exportComparisonCsv()" title="Unduh hasil perbandingan sebagai CSV">
                     📥 Download CSV
@@ -157,44 +166,133 @@
              SECTION 1: XGBOOST COMPARISON
              ============================================ -->
         <div id="sectionXgbComparison">
-            <!-- Confusion Matrix & Stats Row -->
+            <!-- 3x3 Confusion Matrix & Per-Class Metrics Row -->
+            <div class="grid grid-cols-1 gap-md lg:grid-cols-3 mb-md">
+                <!-- 3x3 Confusion Matrix Card -->
+                <div class="card lg:col-span-2">
+                    <div class="card-header" style="justify-content: space-between; align-items: center;">
+                        <div>
+                            <h3 class="card-title"><span class="icon">🎯</span> Matriks Evaluasi Risiko 3x3 (Confusion Matrix)</h3>
+                            <p class="ews-card-subtitle">Mencocokkan risiko aktual pada waktu T dengan prediksi risiko keselamatan penerbangan XGBoost pada waktu T</p>
+                        </div>
+                        <span class="tool-counter-badge" id="xgbMatrixTotalBadge">0 Observasi</span>
+                    </div>
+                    <div class="table-responsive" style="padding: var(--space-sm);">
+                        <table class="data-table modern-table" style="text-align: center; font-size: 0.86rem; width: 100%;">
+                            <thead>
+                                <tr>
+                                    <th rowspan="2" style="vertical-align: middle; background: var(--bg-hover); text-align: left;">Fakta Observasi Aktual (T)</th>
+                                    <th colspan="3" style="text-align: center; background: rgba(139, 92, 246, 0.1); color: #8b5cf6;">Prediksi Klasifikasi XGBoost (T)</th>
+                                    <th rowspan="2" style="vertical-align: middle; background: var(--bg-hover);">Total Aktual</th>
+                                </tr>
+                                <tr>
+                                    <th style="color: #059669; font-weight: 700;">LOW</th>
+                                    <th style="color: #d97706; font-weight: 700;">MEDIUM</th>
+                                    <th style="color: #dc2626; font-weight: 700;">HIGH</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td style="text-align: left;"><span class="badge" style="background: rgba(5, 150, 105, 0.15); color: #059669; font-weight:600;">Aktual LOW</span></td>
+                                    <td style="background: rgba(5, 150, 105, 0.15); font-weight: 800; color: #059669; font-size: 1.1rem;" id="cm_low_low">0</td>
+                                    <td style="background: rgba(245, 158, 11, 0.05); color: #d97706;" id="cm_low_med">0</td>
+                                    <td style="background: rgba(220, 38, 38, 0.05); color: #dc2626;" id="cm_low_high">0</td>
+                                    <td><strong id="cm_support_low">0</strong></td>
+                                </tr>
+                                <tr>
+                                    <td style="text-align: left;"><span class="badge" style="background: rgba(245, 158, 11, 0.15); color: #d97706; font-weight:600;">Aktual MEDIUM</span></td>
+                                    <td style="background: rgba(245, 158, 11, 0.05); color: #d97706;" id="cm_med_low">0</td>
+                                    <td style="background: rgba(245, 158, 11, 0.2); font-weight: 800; color: #d97706; font-size: 1.1rem;" id="cm_med_med">0</td>
+                                    <td style="background: rgba(220, 38, 38, 0.05); color: #dc2626;" id="cm_med_high">0</td>
+                                    <td><strong id="cm_support_med">0</strong></td>
+                                </tr>
+                                <tr>
+                                    <td style="text-align: left;"><span class="badge" style="background: rgba(220, 38, 38, 0.15); color: #dc2626; font-weight:600;">Aktual HIGH</span></td>
+                                    <td style="background: rgba(220, 38, 38, 0.05); color: #dc2626;" id="cm_high_low">0</td>
+                                    <td style="background: rgba(245, 158, 11, 0.05); color: #d97706;" id="cm_high_med">0</td>
+                                    <td style="background: rgba(220, 38, 38, 0.2); font-weight: 800; color: #dc2626; font-size: 1.1rem;" id="cm_high_high">0</td>
+                                    <td><strong id="cm_support_high">0</strong></td>
+                                </tr>
+                            </tbody>
+                            <tfoot>
+                                <tr style="font-weight: 700; background: var(--bg-hover);">
+                                    <td style="text-align: left;">Total Prediksi</td>
+                                    <td id="cm_pred_low">0</td>
+                                    <td id="cm_pred_med">0</td>
+                                    <td id="cm_pred_high">0</td>
+                                    <td id="cm_total_all" style="color: #8b5cf6;">0</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Per-Class Performance Scorecard -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title"><span class="icon">📈</span> Evaluasi Metrik per Kelas</h3>
+                    </div>
+                    <div class="table-responsive" style="padding: var(--space-xs);">
+                        <table class="data-table modern-table" style="font-size: 0.82rem; width: 100%;">
+                            <thead>
+                                <tr>
+                                    <th>Kelas Risiko</th>
+                                    <th>Precision</th>
+                                    <th>Recall</th>
+                                    <th>F1-Score</th>
+                                    <th>Support</th>
+                                </tr>
+                            </thead>
+                            <tbody id="xgbClassReportBody">
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <div style="padding: 12px var(--space-md); border-top: 1px solid var(--border-color); font-size: 0.82rem; display: flex; justify-content: space-between; align-items: center;">
+                        <span>Akurasi Keseluruhan:</span>
+                        <strong id="xgbOverallAccBadge" style="font-size: 1.05rem; color: #059669;">--%</strong>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Binary EWS Overview & Stats Row -->
             <div class="grid grid-cols-1 gap-md md:grid-cols-3 mb-md">
                 <!-- Confusion Matrix 2x2 -->
                 <div class="card md:col-span-2">
                     <div class="card-header">
                         <div>
-                            <h3 class="card-title"><span class="icon">🎯</span> Matriks Kesesuaian Deteksi (Confusion Matrix)</h3>
-                            <p class="ews-card-subtitle">Perbandingan status prediksi bahaya XGBoost dengan fakta cuaca aktual yang masuk</p>
+                            <h3 class="card-title"><span class="icon">⚡</span> Ringkasan Deteksi Bahaya Biner (EWS Alert)</h3>
+                            <p class="ews-card-subtitle">Deteksi biner kondisi ekstrem/bahaya vs normal pada observasi METAR</p>
                         </div>
                     </div>
                     <div style="padding: var(--space-md);">
                         <div class="grid grid-cols-2 gap-sm" style="text-align: center;">
                             <!-- True Negative -->
-                            <div style="background: rgba(5, 150, 105, 0.1); border: 2px solid #059669; border-radius: var(--radius-md); padding: 16px;">
-                                <div style="font-size: 0.8rem; font-weight: 600; color: #059669;">TRUE NEGATIVE (TN)</div>
-                                <div style="font-size: 1.8rem; font-weight: 800; color: #059669;" id="matrixTn">0</div>
-                                <small style="color: var(--text-secondary);">Prediksi AMAN · Aktual AMAN<br><strong>(Tepat / Normal)</strong></small>
+                            <div style="background: rgba(5, 150, 105, 0.1); border: 2px solid #059669; border-radius: var(--radius-md); padding: 14px;">
+                                <div style="font-size: 0.75rem; font-weight: 600; color: #059669;">TRUE NEGATIVE (TN)</div>
+                                <div style="font-size: 1.6rem; font-weight: 800; color: #059669;" id="matrixTn">0</div>
+                                <small style="color: var(--text-secondary);">Prediksi AMAN · Aktual AMAN</small>
                             </div>
 
                             <!-- False Positive -->
-                            <div style="background: rgba(245, 158, 11, 0.1); border: 2px dashed #f59e0b; border-radius: var(--radius-md); padding: 16px;">
-                                <div style="font-size: 0.8rem; font-weight: 600; color: #d97706;">FALSE POSITIVE (FP)</div>
-                                <div style="font-size: 1.8rem; font-weight: 800; color: #d97706;" id="matrixFp">0</div>
-                                <small style="color: var(--text-secondary);">Prediksi BAHAYA · Aktual AMAN<br><strong>(Peringatan Dini)</strong></small>
+                            <div style="background: rgba(245, 158, 11, 0.1); border: 2px dashed #f59e0b; border-radius: var(--radius-md); padding: 14px;">
+                                <div style="font-size: 0.75rem; font-weight: 600; color: #d97706;">FALSE POSITIVE (FP)</div>
+                                <div style="font-size: 1.6rem; font-weight: 800; color: #d97706;" id="matrixFp">0</div>
+                                <small style="color: var(--text-secondary);">Prediksi BAHAYA · Aktual AMAN</small>
                             </div>
 
                             <!-- False Negative -->
-                            <div style="background: rgba(220, 38, 38, 0.1); border: 2px dashed #dc2626; border-radius: var(--radius-md); padding: 16px;">
-                                <div style="font-size: 0.8rem; font-weight: 600; color: #dc2626;">FALSE NEGATIVE (FN)</div>
-                                <div style="font-size: 1.8rem; font-weight: 800; color: #dc2626;" id="matrixFn">0</div>
-                                <small style="color: var(--text-secondary);">Prediksi AMAN · Aktual BAHAYA<br><strong>(Bahaya Terlewat)</strong></small>
+                            <div style="background: rgba(220, 38, 38, 0.1); border: 2px dashed #dc2626; border-radius: var(--radius-md); padding: 14px;">
+                                <div style="font-size: 0.75rem; font-weight: 600; color: #dc2626;">FALSE NEGATIVE (FN)</div>
+                                <div style="font-size: 1.6rem; font-weight: 800; color: #dc2626;" id="matrixFn">0</div>
+                                <small style="color: var(--text-secondary);">Prediksi AMAN · Aktual BAHAYA</small>
                             </div>
 
                             <!-- True Positive -->
-                            <div style="background: rgba(5, 150, 105, 0.15); border: 2px solid #059669; border-radius: var(--radius-md); padding: 16px;">
-                                <div style="font-size: 0.8rem; font-weight: 600; color: #059669;">TRUE POSITIVE (TP)</div>
-                                <div style="font-size: 1.8rem; font-weight: 800; color: #059669;" id="matrixTp">0</div>
-                                <small style="color: var(--text-secondary);">Prediksi BAHAYA · Aktual BAHAYA<br><strong>(Bahaya Terdeteksi Akurat)</strong></small>
+                            <div style="background: rgba(5, 150, 105, 0.15); border: 2px solid #059669; border-radius: var(--radius-md); padding: 14px;">
+                                <div style="font-size: 0.75rem; font-weight: 600; color: #059669;">TRUE POSITIVE (TP)</div>
+                                <div style="font-size: 1.6rem; font-weight: 800; color: #059669;" id="matrixTp">0</div>
+                                <small style="color: var(--text-secondary);">Prediksi BAHAYA · Aktual BAHAYA</small>
                             </div>
                         </div>
                     </div>
@@ -293,20 +391,21 @@
 
             <!-- LSTM Metrics Error Summary Table -->
             <div class="card mb-md">
-                <div class="card-header">
+                <div class="card-header" style="justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
                     <div>
-                        <h3 class="card-title"><span class="icon">📊</span> Rangkuman Error Prediksi LSTM (+30 Menit & +1 Jam)</h3>
-                        <p class="ews-card-subtitle">Semakin kecil nilai MAE dan RMSE, semakin akurat peramalan model mendekati kenyataan.</p>
+                        <h3 class="card-title"><span class="icon">📊</span> Rangkuman Akurasi Prediksi LSTM (+60 Menit / 2 Interval)</h3>
+                        <p class="ews-card-subtitle">Mencocokkan nilai cuaca aktual pada waktu T dengan prediksi LSTM yang dihasilkan pada (T - 60 menit).</p>
                     </div>
+                    <span class="tool-counter-badge" style="background: rgba(139, 92, 246, 0.12); color: #8b5cf6;" id="lstmHorizonBadge">Target: T + 60m</span>
                 </div>
                 <div class="table-responsive">
                     <table class="data-table modern-table" style="font-size: 0.88rem;">
                         <thead>
                             <tr>
                                 <th>Parameter Cuaca</th>
-                                <th>MAE (+30 Menit)</th>
-                                <th>RMSE (+30 Menit)</th>
-                                <th>MAE (+1 Jam)</th>
+                                <th>Horizon Evaluasi</th>
+                                <th>MAE (Mean Absolute Error)</th>
+                                <th>RMSE (Root Mean Squared Error)</th>
                                 <th>Status Reliabilitas</th>
                             </tr>
                         </thead>
@@ -375,11 +474,46 @@
             </div>
         </div>
     </div>
+
+    <!-- Backfill Historical Evaluation Modal -->
+    <div id="backfillModal" class="hidden" style="position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.6); z-index:99999; display:flex; align-items:center; justify-content:center;">
+        <div class="card" style="width: 500px; max-width: 92%; background: var(--bg-card, #ffffff); border: 1px solid var(--border-color); border-radius: var(--radius-lg); box-shadow: 0 15px 35px rgba(0,0,0,0.3); padding: 24px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border-color); padding-bottom: 12px; margin-bottom: 16px;">
+                <h3 style="margin:0; font-size:1.15rem; display:flex; align-items:center; gap:8px;">
+                    <span>⚡</span> Roll-up / Backfill Data Historis
+                </h3>
+                <button type="button" onclick="closeBackfillModal()" style="background:none; border:none; font-size:1.5rem; cursor:pointer; color:var(--text-muted);">&times;</button>
+            </div>
+            <p style="font-size:0.85rem; color:var(--text-secondary); line-height: 1.5; margin-bottom: 16px;">
+                Mengevaluasi ribuan data historis mentah METAR di Google Sheets secara massal. Sistem akan mencocokkan prediksi LSTM (T + 60m) dan XGBoost (T) lalu menyimpan hasilnya ke akumulator <code>RingkasanEvaluasiHarian</code> agar perbandingan bulanan dan tahunan bisa dibuka seketika tanpa re-evaluasi lambat.
+            </p>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-sm mb-md">
+                <div>
+                    <label style="font-size:0.8rem; font-weight:600; display:block; margin-bottom:4px;">Tanggal Mulai:</label>
+                    <input type="date" id="backfillStartDate" class="form-input" style="width:100%; padding:8px 12px; border:1px solid var(--border-color); border-radius:var(--radius-sm); font-size:0.88rem;" />
+                </div>
+                <div>
+                    <label style="font-size:0.8rem; font-weight:600; display:block; margin-bottom:4px;">Tanggal Selesai:</label>
+                    <input type="date" id="backfillEndDate" class="form-input" style="width:100%; padding:8px 12px; border:1px solid var(--border-color); border-radius:var(--radius-sm); font-size:0.88rem;" />
+                </div>
+            </div>
+            <div id="backfillStatusAlert" class="alert-box alert-info mb-md hidden" style="font-size:0.85rem; padding:10px 14px;">
+                <span id="backfillStatusText">Sedang memproses evaluasi massal...</span>
+            </div>
+            <div style="display:flex; justify-content:flex-end; gap:10px;">
+                <button type="button" class="btn btn-sm btn-outline" onclick="closeBackfillModal()">Tutup</button>
+                <button type="button" class="btn btn-sm btn-primary" id="btnRunBackfill" onclick="executeBackfill()">
+                    🚀 Jalankan Evaluasi
+                </button>
+            </div>
+        </div>
+    </div>
 </div>
 {% endblock %}
 
 {% block extra_scripts_bottom %}
 <script>
+    let summaryData = null;
     let comparisonData = null;
     let currentPeriod = 'today';
     let currentLstmParam = 'temp';
@@ -443,11 +577,76 @@
         renderLstmOverlayChart();
     }
 
+    function openBackfillModal() {
+        const modal = document.getElementById('backfillModal');
+        if (modal) {
+            modal.classList.remove('hidden');
+            const today = new Date().toISOString().split('T')[0];
+            const firstOfMonth = today.slice(0, 8) + '01';
+            document.getElementById('backfillStartDate').value = firstOfMonth;
+            document.getElementById('backfillEndDate').value = today;
+            const alertBox = document.getElementById('backfillStatusAlert');
+            if (alertBox) alertBox.classList.add('hidden');
+        }
+    }
+
+    function closeBackfillModal() {
+        const modal = document.getElementById('backfillModal');
+        if (modal) modal.classList.add('hidden');
+    }
+
+    async function executeBackfill() {
+        const start = document.getElementById('backfillStartDate').value;
+        const end = document.getElementById('backfillEndDate').value;
+        const alertBox = document.getElementById('backfillStatusAlert');
+        const alertText = document.getElementById('backfillStatusText');
+        const btn = document.getElementById('btnRunBackfill');
+
+        if (!start || !end) {
+            alert('Silakan pilih tanggal mulai dan selesai.');
+            return;
+        }
+
+        alertBox.classList.remove('hidden', 'alert-success', 'alert-error');
+        alertBox.classList.add('alert-info');
+        alertText.textContent = `Sedang mengevaluasi data dari ${start} s/d ${end}... Mohon tunggu.`;
+        btn.disabled = true;
+
+        try {
+            const resp = await fetch(`/api/comparison/backfill?station=WARR&start_date=${start}&end_date=${end}`);
+            const res = await resp.json();
+            if (resp.ok && res.status === 'success') {
+                alertBox.classList.remove('alert-info');
+                alertBox.classList.add('alert-success');
+                alertText.textContent = `✅ Berhasil! ${res.summary.processed_days} hari berhasil dievaluasi dan di-roll-up ke RingkasanEvaluasiHarian.`;
+                setTimeout(() => {
+                    closeBackfillModal();
+                    loadComparisonData(currentPeriod);
+                }, 1600);
+            } else {
+                throw new Error(res.error || 'Gagal mengevaluasi data');
+            }
+        } catch (err) {
+            alertBox.classList.remove('alert-info');
+            alertBox.classList.add('alert-error');
+            alertText.textContent = `❌ ${err.message}`;
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
     async function loadComparisonData(period) {
         currentPeriod = period || 'today';
-        document.getElementById('btnPeriodToday').classList.toggle('active', currentPeriod === 'today');
-        document.getElementById('btnPeriodYesterday').classList.toggle('active', currentPeriod === 'yesterday');
-        document.getElementById('btnPeriodAll').classList.toggle('active', currentPeriod === 'all');
+        const pButtons = {
+            today: document.getElementById('btnPeriodToday'),
+            yesterday: document.getElementById('btnPeriodYesterday'),
+            monthly: document.getElementById('btnPeriodMonthly'),
+            yearly: document.getElementById('btnPeriodYearly'),
+            all: document.getElementById('btnPeriodAll')
+        };
+        for (const k in pButtons) {
+            if (pButtons[k]) pButtons[k].classList.toggle('active', currentPeriod === k);
+        }
 
         const loading = document.getElementById('comparisonLoading');
         const content = document.getElementById('comparisonContent');
@@ -459,46 +658,29 @@
         if (errorBox) errorBox.classList.add('hidden');
         if (refreshBtn) refreshBtn.classList.add('rotating');
 
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 detik client timeout
-
         try {
-            const resp = await fetch(`/api/comparison/data?period=${currentPeriod}&station=WARR`, {
-                signal: controller.signal
-            });
-            clearTimeout(timeoutId);
-
-            if (!resp.ok) {
-                let errText = `Server mengembalikan status HTTP ${resp.status}`;
-                try {
-                    const errJson = await resp.json();
-                    if (errJson && errJson.error) errText = errJson.error;
-                } catch (_) {
-                    if (resp.status === 504) {
-                        errText = "Koneksi server timeout (504 Gateway Timeout). Data sedang dihitung dan disimpan di Google Sheets, silakan klik 'Coba Lagi'.";
-                    }
-                }
-                throw new Error(errText);
+            // 1. Fetch Fast Roll-up Summary Accumulators (<0.05s)
+            const summaryResp = await fetch(`/api/comparison/summary?period=${currentPeriod}&station=WARR`);
+            if (summaryResp.ok) {
+                summaryData = await summaryResp.json();
+                renderSummaryMetrics(summaryData);
             }
 
-            const data = await resp.json();
-            if (data.status === 'error') {
-                throw new Error(data.error || 'Gagal memuat hasil perbandingan.');
+            // 2. Fetch Granular Observations for Charts and Logs
+            const detailPeriod = (currentPeriod === 'monthly' || currentPeriod === 'yearly') ? 'today' : currentPeriod;
+            const detailResp = await fetch(`/api/comparison/data?period=${detailPeriod}&station=WARR`);
+            if (detailResp.ok) {
+                comparisonData = await detailResp.json();
+                renderDetailedObservations(comparisonData, currentPeriod);
             }
 
-            comparisonData = data;
-            renderAllComparisonData(data);
             if (loading) loading.classList.add('hidden');
             if (content) content.classList.remove('hidden');
         } catch (e) {
-            clearTimeout(timeoutId);
             console.error('[COMPARISON] Fetch error:', e);
             if (loading) loading.classList.add('hidden');
             if (errorBox) {
-                let msg = e.name === 'AbortError' 
-                    ? "Permintaan data melampaui batas waktu (Timeout 15 detik). Silakan klik 'Coba Lagi'."
-                    : (e.message || 'Terjadi kesalahan jaringan.');
-                document.getElementById('comparisonErrorText').textContent = msg;
+                document.getElementById('comparisonErrorText').textContent = e.message || 'Terjadi kesalahan saat memuat data.';
                 errorBox.classList.remove('hidden');
             }
         } finally {
@@ -514,41 +696,144 @@
         window.location.href = `/api/comparison/export?period=${currentPeriod}&station=WARR`;
     }
 
-    function renderAllComparisonData(data) {
-        document.getElementById('sourceBadge').textContent = `${data.total_incoming_records} observasi (${data.source})`;
+    function renderSummaryMetrics(s) {
+        if (!s) return;
+        const meta = s.metadata || {};
+        const sourceLabel = meta.source || 'RingkasanEvaluasiHarian';
+        const dateRange = meta.start_date === meta.end_date ? meta.start_date : `${meta.start_date} s/d ${meta.end_date}`;
+        document.getElementById('sourceBadge').textContent = `${dateRange} (${sourceLabel})`;
 
-        // 1. Top KPI Summary
+        const xgb = s.xgboost_classification || {};
+        const lstm = s.lstm_regression || {};
+
+        // Top KPI Cards
+        document.getElementById('xgbAccuracyVal').textContent = `${xgb.overall_accuracy_percent || 0}%`;
+        document.getElementById('xgbCaseCount').textContent = `${xgb.total_evaluasi || 0} observasi dianalisis`;
+        document.getElementById('xgbOverallAccBadge').textContent = `${xgb.overall_accuracy_percent || 0}%`;
+
+        if (lstm.suhu_c) {
+            document.getElementById('lstmMaeTempVal').textContent = `± ${lstm.suhu_c.mae} °C`;
+            document.getElementById('lstmRmseTemp').textContent = `RMSE: ${lstm.suhu_c.rmse} °C (+60m)`;
+        }
+        if (lstm.tekanan_qnh_hpa) {
+            document.getElementById('lstmMaeQnhVal').textContent = `± ${lstm.tekanan_qnh_hpa.mae} hPa`;
+            document.getElementById('lstmRmseQnh').textContent = `RMSE: ${lstm.tekanan_qnh_hpa.rmse} hPa (+60m)`;
+        }
+        if (lstm.kecepatan_angin_kt) {
+            document.getElementById('lstmMaeWindVal').textContent = `± ${lstm.kecepatan_angin_kt.mae} kt`;
+            document.getElementById('lstmRmseWind').textContent = `RMSE: ${lstm.kecepatan_angin_kt.rmse} kt (+60m)`;
+        }
+
+        // Render 3x3 Confusion Matrix
+        const cm = xgb.confusion_matrix || {};
+        const rep = xgb.class_report || {};
+
+        const low_low = (cm.LOW && cm.LOW.LOW) || 0;
+        const low_med = (cm.LOW && cm.LOW.MEDIUM) || 0;
+        const low_high = (cm.LOW && cm.LOW.HIGH) || 0;
+        const sup_low = (rep.LOW && rep.LOW.support) || (low_low + low_med + low_high);
+
+        const med_low = (cm.MEDIUM && cm.MEDIUM.LOW) || 0;
+        const med_med = (cm.MEDIUM && cm.MEDIUM.MEDIUM) || 0;
+        const med_high = (cm.MEDIUM && cm.MEDIUM.HIGH) || 0;
+        const sup_med = (rep.MEDIUM && rep.MEDIUM.support) || (med_low + med_med + med_high);
+
+        const high_low = (cm.HIGH && cm.HIGH.LOW) || 0;
+        const high_med = (cm.HIGH && cm.HIGH.MEDIUM) || 0;
+        const high_high = (cm.HIGH && cm.HIGH.HIGH) || 0;
+        const sup_high = (rep.HIGH && rep.HIGH.support) || (high_low + high_med + high_high);
+
+        document.getElementById('cm_low_low').textContent = low_low;
+        document.getElementById('cm_low_med').textContent = low_med;
+        document.getElementById('cm_low_high').textContent = low_high;
+        document.getElementById('cm_support_low').textContent = sup_low;
+
+        document.getElementById('cm_med_low').textContent = med_low;
+        document.getElementById('cm_med_med').textContent = med_med;
+        document.getElementById('cm_med_high').textContent = med_high;
+        document.getElementById('cm_support_med').textContent = sup_med;
+
+        document.getElementById('cm_high_low').textContent = high_low;
+        document.getElementById('cm_high_med').textContent = high_med;
+        document.getElementById('cm_high_high').textContent = high_high;
+        document.getElementById('cm_support_high').textContent = sup_high;
+
+        const pred_low = low_low + med_low + high_low;
+        const pred_med = low_med + med_med + high_med;
+        const pred_high = low_high + med_high + high_high;
+        const total_all = xgb.total_evaluasi || (sup_low + sup_med + sup_high);
+
+        document.getElementById('cm_pred_low').textContent = pred_low;
+        document.getElementById('cm_pred_med').textContent = pred_med;
+        document.getElementById('cm_pred_high').textContent = pred_high;
+        document.getElementById('cm_total_all').textContent = total_all;
+        document.getElementById('xgbMatrixTotalBadge').textContent = `${total_all} Observasi`;
+
+        // Render Class Report Table
+        const classTableBody = document.getElementById('xgbClassReportBody');
+        if (classTableBody) {
+            const classes = [
+                { key: 'LOW', label: 'LOW RISK (Kondusif)', color: '#059669' },
+                { key: 'MEDIUM', label: 'MEDIUM RISK (Waspada/CB)', color: '#d97706' },
+                { key: 'HIGH', label: 'HIGH RISK (Bahaya/TS)', color: '#dc2626' }
+            ];
+            classTableBody.innerHTML = classes.map(c => {
+                const r = rep[c.key] || { precision: 0, recall: 0, f1_score: 0, support: 0 };
+                return `
+                    <tr>
+                        <td><strong style="color:${c.color}">${c.label}</strong></td>
+                        <td><strong>${r.precision}%</strong></td>
+                        <td><strong>${r.recall}%</strong></td>
+                        <td><span class="badge" style="background:${c.color}20; color:${c.color}; font-weight:700;">${r.f1_score}%</span></td>
+                        <td><strong>${r.support}</strong></td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // Render LSTM Summary Table
+        const lstmBody = document.getElementById('lstmMiniSummaryBody');
+        if (lstmBody && lstm.suhu_c) {
+            const rows = [
+                { name: '🌡️ Suhu Udara', unit: '°C', data: lstm.suhu_c },
+                { name: '📉 Tekanan Udara QNH', unit: 'hPa', data: lstm.tekanan_qnh_hpa },
+                { name: '💨 Kecepatan Angin', unit: 'kt', data: lstm.kecepatan_angin_kt },
+            ];
+            lstmBody.innerHTML = rows.map(r => `
+                <tr>
+                    <td><strong>${r.name}</strong></td>
+                    <td><span class="badge" style="background:rgba(139,92,246,0.12); color:#8b5cf6;">+60 Menit (T - 60m)</span></td>
+                    <td><strong style="font-size:1rem;">± ${r.data.mae} ${r.unit}</strong></td>
+                    <td>${r.data.rmse} ${r.unit}</td>
+                    <td><span class="badge badge-success">✅ Sangat Baik</span></td>
+                </tr>
+            `).join('');
+        }
+    }
+
+    function renderDetailedObservations(data, period) {
+        if (!data) return;
         const xgb = data.xgboost;
         const lstm = data.lstm;
 
-        document.getElementById('xgbAccuracyVal').textContent = `${xgb.accuracy_percent}%`;
-        document.getElementById('xgbCaseCount').textContent = `${xgb.total_cases} observasi dianalisis`;
-        document.getElementById('xgbTpCount').textContent = xgb.tp;
-        document.getElementById('xgbFpCount').textContent = xgb.fp;
+        // Top KPI counts
+        if (xgb) {
+            document.getElementById('xgbTpCount').textContent = xgb.tp || 0;
+            document.getElementById('xgbFpCount').textContent = xgb.fp || 0;
+            renderXgbSection(xgb);
+        }
 
-        const mae = lstm.metrics.mae_30m;
-        const rmse = lstm.metrics.rmse_30m;
-        document.getElementById('lstmMaeTempVal').textContent = `± ${mae.suhu_c} °C`;
-        document.getElementById('lstmRmseTemp').textContent = `RMSE: ${rmse.suhu_c} °C`;
+        if (lstm) {
+            renderLstmSection(lstm);
+        }
 
-        document.getElementById('lstmMaeQnhVal').textContent = `± ${mae.qnh_hpa} hPa`;
-        document.getElementById('lstmRmseQnh').textContent = `RMSE: ${rmse.qnh_hpa} hPa`;
-
-        document.getElementById('lstmMaeWindVal').textContent = `± ${mae.kec_angin_kt} kt`;
-        document.getElementById('lstmRmseWind').textContent = `RMSE: ${rmse.kec_angin_kt} kt`;
-
-        // 2. Render XGBoost Section
-        renderXgbSection(xgb);
-
-        // 3. Render LSTM Section
-        renderLstmSection(lstm);
-
-        // 4. Render Combined Section
-        renderCombinedSection(xgb, lstm);
+        if (xgb && lstm) {
+            renderCombinedSection(xgb, lstm);
+        }
     }
 
     function renderXgbSection(xgb) {
-        // Confusion Matrix values
+        // Binary Confusion Matrix values
         document.getElementById('matrixTn').textContent = xgb.tn;
         document.getElementById('matrixTp').textContent = xgb.tp;
         document.getElementById('matrixFp').textContent = xgb.fp;
@@ -558,7 +843,7 @@
         document.getElementById('xgbSummaryRecall').textContent = `${xgb.danger_recall_percent}%`;
         document.getElementById('xgbSummaryTotal').textContent = `${xgb.total_cases} baris`;
 
-        const latestRow = xgb.rows.length > 0 ? xgb.rows[xgb.rows.length - 1] : null;
+        const latestRow = xgb.rows && xgb.rows.length > 0 ? xgb.rows[xgb.rows.length - 1] : null;
         const latestBadge = document.getElementById('xgbSummaryLatestStatus');
         if (latestRow) {
             latestBadge.textContent = `${latestRow.pred_status} (Aktual: ${latestRow.actual_status})`;
@@ -569,8 +854,9 @@
 
         // Table
         const tbody = document.getElementById('xgbTableBody');
+        if (!tbody) return;
         tbody.innerHTML = '';
-        if (xgb.rows.length === 0) {
+        if (!xgb.rows || xgb.rows.length === 0) {
             tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:20px;">Belum cukup data observasi untuk evaluasi XGBoost (minimal 4 data).</td></tr>';
             return;
         }
@@ -604,37 +890,10 @@
     }
 
     function renderLstmSection(lstm) {
-        // Mini Summary Table
-        const tbody = document.getElementById('lstmMiniSummaryBody');
-        tbody.innerHTML = '';
-
-        const m30 = lstm.metrics.mae_30m;
-        const r30 = lstm.metrics.rmse_30m;
-        const m1h = lstm.metrics.mae_1h;
-
-        const params = [
-            { name: '🌡️ Suhu Udara', key: 'suhu_c', unit: '°C' },
-            { name: '📉 Tekanan QNH', key: 'qnh_hpa', unit: 'hPa' },
-            { name: '💨 Kecepatan Angin', key: 'kec_angin_kt', unit: 'kt' },
-            { name: '💧 Titik Embun', key: 'dew_point_c', unit: '°C' }
-        ];
-
-        params.forEach(p => {
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td><strong>${p.name}</strong></td>
-                <td><strong>± ${m30[p.key]} ${p.unit}</strong></td>
-                <td>${r30[p.key]} ${p.unit}</td>
-                <td>± ${m1h[p.key]} ${p.unit}</td>
-                <td><span class="badge badge-success">✅ Sangat Baik</span></td>
-            `;
-            tbody.appendChild(tr);
-        });
-
-        // Detail Table
         const detailBody = document.getElementById('lstmDetailTableBody');
+        if (!detailBody) return;
         detailBody.innerHTML = '';
-        if (lstm.rows.length === 0) {
+        if (!lstm.rows || lstm.rows.length === 0) {
             detailBody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:20px;">Belum cukup data observasi untuk evaluasi LSTM (minimal 11 data berurutan).</td></tr>';
             return;
         }
@@ -713,7 +972,7 @@
                         fill: false
                     },
                     {
-                        label: `Prediksi LSTM (+1 Jam)`,
+                        label: `Prediksi LSTM (+1 Jam / +60 Menit)`,
                         data: paramData.pred_1h,
                         borderColor: cfg.colorPred1h,
                         borderDash: [2, 2],
@@ -755,12 +1014,15 @@
 
     function renderCombinedSection(xgb, lstm) {
         const tbody = document.getElementById('combinedTableBody');
+        if (!tbody) return;
         tbody.innerHTML = '';
 
         const xgbMap = {};
-        xgb.rows.forEach(r => { xgbMap[r.time] = r; });
+        if (xgb.rows) {
+            xgb.rows.forEach(r => { xgbMap[r.time] = r; });
+        }
 
-        if (lstm.rows.length === 0) {
+        if (!lstm.rows || lstm.rows.length === 0) {
             tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:20px;">Belum cukup data gabungan untuk dievaluasi.</td></tr>';
             return;
         }

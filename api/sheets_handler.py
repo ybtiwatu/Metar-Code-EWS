@@ -787,5 +787,186 @@ class GoogleSheetHandler:
 
         return filtered[-limit:]
 
+    # =========================================================================
+    # RINGKASAN EVALUASI HARIAN (DAILY ROLL-UP ACCUMULATOR)
+    # =========================================================================
+
+    @staticmethod
+    def _get_daily_summary_csv_path():
+        if os.environ.get("VERCEL"):
+            return "/tmp/ringkasan_evaluasi_harian.csv"
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        data_dir = os.path.join(base_dir, "data")
+        os.makedirs(data_dir, exist_ok=True)
+        return os.path.join(data_dir, "ringkasan_evaluasi_harian.csv")
+
+    def _get_daily_summary_worksheet(self):
+        """Get or initialize worksheet 'RingkasanEvaluasiHarian' in Google Sheets."""
+        if not self.client:
+            self._authenticate()
+        if not self.client:
+            return None
+
+        try:
+            spreadsheet = self.client.open_by_key(SPREADSHEET_ID)
+            try:
+                return spreadsheet.worksheet("RingkasanEvaluasiHarian")
+            except gspread.WorksheetNotFound:
+                worksheet = spreadsheet.add_worksheet(
+                    title="RingkasanEvaluasiHarian",
+                    rows="5000",
+                    cols="25",
+                )
+                headers = [
+                    "station", "tanggal",
+                    "total_samples_lstm",
+                    "sum_abs_error_suhu", "sum_sq_error_suhu",
+                    "sum_abs_error_angin", "sum_sq_error_angin",
+                    "sum_abs_error_qnh", "sum_sq_error_qnh",
+                    "total_samples_xgb", "xgb_total_benar",
+                    "cm_low_low", "cm_low_med", "cm_low_high",
+                    "cm_med_low", "cm_med_med", "cm_med_high",
+                    "cm_high_low", "cm_high_med", "cm_high_high",
+                    "updated_at"
+                ]
+                worksheet.append_row(headers, value_input_option="USER_ENTERED")
+                print("[SHEETS] Created 'RingkasanEvaluasiHarian' worksheet with accumulator headers", file=sys.stderr)
+                return worksheet
+        except Exception as e:
+            print(f"[SHEETS] Error getting RingkasanEvaluasiHarian worksheet: {e}", file=sys.stderr)
+            return None
+
+    def save_daily_summary_record(self, record: dict) -> bool:
+        """
+        Save or UPSERT a daily evaluation accumulator record into Google Sheets & fallback CSV.
+        Key: (station, tanggal).
+        """
+        if not record:
+            return False
+
+        station = str(record.get("station", "WARR")).strip().upper()
+        tanggal = str(record.get("tanggal", ""))
+        if not tanggal:
+            return False
+
+        # 1. Update local/temporary fallback CSV
+        try:
+            csv_path = self._get_daily_summary_csv_path()
+            new_df = pd.DataFrame([record])
+            if os.path.exists(csv_path):
+                existing_df = pd.read_csv(csv_path)
+                combined = pd.concat([existing_df, new_df], ignore_index=True)
+                subset_cols = [c for c in ["station", "tanggal"] if c in combined.columns]
+                if subset_cols:
+                    combined.drop_duplicates(subset=subset_cols, keep="last", inplace=True)
+                combined.to_csv(csv_path, index=False)
+            else:
+                new_df.to_csv(csv_path, index=False)
+        except Exception as csv_err:
+            print(f"[SHEETS] Fallback daily summary CSV error: {csv_err}", file=sys.stderr)
+
+        self._cache.pop("daily_summary_records", None)
+
+        # 2. Update Google Sheets
+        try:
+            worksheet = self._get_daily_summary_worksheet()
+            if worksheet is None:
+                return True
+
+            all_vals = worksheet.get_all_values()
+            row_idx_to_update = None
+            if len(all_vals) > 1:
+                for idx, row in enumerate(all_vals[1:], start=2):
+                    if len(row) >= 2 and str(row[0]).strip().upper() == station and str(row[1]).strip() == tanggal:
+                        row_idx_to_update = idx
+                        break
+
+            row_values = [
+                station,
+                tanggal,
+                int(record.get("total_samples_lstm") or 0),
+                self._as_float(record.get("sum_abs_error_suhu")) or 0.0,
+                self._as_float(record.get("sum_sq_error_suhu")) or 0.0,
+                self._as_float(record.get("sum_abs_error_angin")) or 0.0,
+                self._as_float(record.get("sum_sq_error_angin")) or 0.0,
+                self._as_float(record.get("sum_abs_error_qnh")) or 0.0,
+                self._as_float(record.get("sum_sq_error_qnh")) or 0.0,
+                int(record.get("total_samples_xgb") or 0),
+                int(record.get("xgb_total_benar") or 0),
+                int(record.get("cm_low_low") or 0),
+                int(record.get("cm_low_med") or 0),
+                int(record.get("cm_low_high") or 0),
+                int(record.get("cm_med_low") or 0),
+                int(record.get("cm_med_med") or 0),
+                int(record.get("cm_med_high") or 0),
+                int(record.get("cm_high_low") or 0),
+                int(record.get("cm_high_med") or 0),
+                int(record.get("cm_high_high") or 0),
+                str(record.get("updated_at") or datetime.utcnow().isoformat() + "Z")
+            ]
+
+            if row_idx_to_update:
+                # Update existing row
+                cell_range = f"A{row_idx_to_update}:U{row_idx_to_update}"
+                worksheet.update(cell_range, [row_values], value_input_option="USER_ENTERED")
+                print(f"[SHEETS] Updated existing row {row_idx_to_update} in 'RingkasanEvaluasiHarian' for {station} {tanggal}", file=sys.stderr)
+            else:
+                worksheet.append_row(row_values, value_input_option="USER_ENTERED")
+                print(f"[SHEETS] Appended new row in 'RingkasanEvaluasiHarian' for {station} {tanggal}", file=sys.stderr)
+
+            self._cache.pop("daily_summary_records", None)
+            return True
+        except Exception as e:
+            print(f"[SHEETS] Error saving daily summary: {e}", file=sys.stderr)
+            return False
+
+    def get_daily_summary_records(self, station: str = "WARR", start_date: str = None, end_date: str = None, bypass_cache: bool = False) -> list:
+        """
+        Fetch daily evaluation accumulator records from Google Sheets (or fallback CSV)
+        with fast in-memory caching.
+        """
+        station = (station or "WARR").strip().upper()
+
+        def _fetch():
+            # 1. Try Google Sheets
+            worksheet = self._get_daily_summary_worksheet()
+            if worksheet is not None:
+                try:
+                    records = worksheet.get_all_records()
+                    if records:
+                        return records
+                except Exception as e:
+                    print(f"[SHEETS] Error reading RingkasanEvaluasiHarian: {e}", file=sys.stderr)
+
+            # 2. Fallback to CSV
+            csv_path = self._get_daily_summary_csv_path()
+            if os.path.exists(csv_path):
+                try:
+                    df = pd.read_csv(csv_path)
+                    if not df.empty:
+                        return df.to_dict(orient="records")
+                except Exception as e:
+                    print(f"[SHEETS] Error reading daily summary fallback CSV: {e}", file=sys.stderr)
+            return []
+
+        all_records = _fetch() if bypass_cache else self._get_cached_or_fetch("daily_summary_records", _fetch, ttl=180)
+        if not all_records:
+            return []
+
+        # Filter by station and date range
+        filtered = []
+        for r in all_records:
+            r_stn = str(r.get("station", "")).strip().upper()
+            if r_stn and r_stn != station:
+                continue
+            r_date = str(r.get("tanggal", "")).strip()
+            if start_date and r_date < start_date:
+                continue
+            if end_date and r_date > end_date:
+                continue
+            filtered.append(r)
+
+        return filtered
+
 # Singleton instance
 sheets_handler = GoogleSheetHandler()

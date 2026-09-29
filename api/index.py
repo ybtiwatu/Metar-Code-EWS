@@ -30,6 +30,11 @@ try:
 except (ImportError, ValueError):
     from lstm_predictor import predict_metar_lstm, predict_metar_multistep  # type: ignore
 
+try:
+    from .comparison_service import comparison_service  # type: ignore
+except (ImportError, ValueError):
+    from comparison_service import comparison_service  # type: ignore
+
 # Global cache state used by polling and history endpoints.
 _last_fetch_time = 0
 _cached_metar = None
@@ -2550,6 +2555,82 @@ def api_comparison_export():
         return jsonify({"status": "error", "error": str(e)}), 500
 
 
+@app.route("/api/comparison/summary")
+def api_comparison_summary():
+    """
+    Mengambil metrik ringkasan evaluasi (LSTM & XGBoost) berbasis akumulator harian
+    untuk periode tertentu:
+    - period: 'today', 'yesterday', 'daily', 'monthly', 'yearly'
+    - date: 'YYYY-MM-DD' (jika period='daily')
+    - year: int (jika period='monthly' atau 'yearly')
+    - month: int (jika period='monthly')
+    - station: default 'WARR'
+    """
+    period = request.args.get("period", "today").strip().lower()
+    station = request.args.get("station", "WARR").strip().upper()
+    now = datetime.utcnow()
+
+    try:
+        if period == "today":
+            target_date = now.date()
+            res = comparison_service.get_metrics_daily(target_date, station=station)
+        elif period == "yesterday":
+            target_date = now.date() - timedelta(days=1)
+            res = comparison_service.get_metrics_daily(target_date, station=station)
+        elif period == "daily":
+            date_str = request.args.get("date", "").strip()
+            if date_str:
+                target_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+            else:
+                target_date = now.date()
+            res = comparison_service.get_metrics_daily(target_date, station=station)
+        elif period in ("monthly", "mtd"):
+            year = int(request.args.get("year", now.year))
+            month = int(request.args.get("month", now.month))
+            res = comparison_service.get_metrics_monthly_ongoing(year=year, month=month, station=station)
+        elif period in ("yearly", "ytd"):
+            year = int(request.args.get("year", now.year))
+            res = comparison_service.get_metrics_yearly_ongoing(year=year, station=station)
+        else:
+            res = comparison_service.get_metrics_daily(now.date(), station=station)
+
+        return jsonify(res)
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"status": "error", "error": f"Gagal mengambil ringkasan evaluasi: {str(e)}"}), 500
+
+
+@app.route("/api/comparison/backfill", methods=["POST", "GET"])
+def api_comparison_backfill():
+    """
+    Trigger backfill historical evaluasi harian secara massal.
+    """
+    station = request.args.get("station", "WARR").strip().upper()
+    start_date_str = request.args.get("start_date", "").strip()
+    end_date_str = request.args.get("end_date", "").strip()
+
+    if not start_date_str or not end_date_str:
+        return jsonify({
+            "status": "error",
+            "error": "Parameter 'start_date' dan 'end_date' (format YYYY-MM-DD) wajib diisi."
+        }), 400
+
+    try:
+        start_d = datetime.strptime(start_date_str, "%Y-%m-%d").date()
+        end_d = datetime.strptime(end_date_str, "%Y-%m-%d").date()
+        summary = comparison_service.backfill_historical_data(start_d, end_d, station=station)
+        return jsonify({
+            "status": "success",
+            "station": station,
+            "start_date": start_date_str,
+            "end_date": end_date_str,
+            "summary": summary
+        })
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"status": "error", "error": f"Gagal menjalankan backfill: {str(e)}"}), 500
+
+
 @app.route("/api/metar/<station_code>")
 def api_metar_single(station_code):
 
@@ -4241,6 +4322,16 @@ def cron_sync():
                 'metar': latest_metar_data.get('raw') if isinstance(latest_metar_data, dict) else None,
                 'attempts': 0
             }
+
+            # Asynchronously update daily evaluation summary in RingkasanEvaluasiHarian
+            try:
+                threading.Thread(
+                    target=comparison_service.evaluate_daily_records,
+                    args=(now.date(), station),
+                    daemon=True
+                ).start()
+            except Exception as ev_err:
+                print(f"[CRON] Daily eval trigger error: {ev_err}", file=sys.stderr)
             
             # Safely get preview
             raw_preview = ""
