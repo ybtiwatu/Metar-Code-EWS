@@ -59,14 +59,19 @@
     <!-- Loading State -->
     <div id="comparisonLoading" class="card mb-md" style="padding: 40px; text-align: center;">
         <div style="font-size: 2rem; margin-bottom: 10px; animation: ews-spin 1s linear infinite; display: inline-block;">↻</div>
-        <p style="color: var(--text-secondary); margin: 0; font-weight: 600;">Menghitung perbandingan data aktual vs prediksi XGBoost & LSTM...</p>
-        <small class="text-muted">Mengevaluasi observasi METAR yang masuk secara berurutan</small>
+        <p style="color: var(--text-secondary); margin: 0; font-weight: 600;">Memuat perbandingan data aktual vs prediksi XGBoost & LSTM...</p>
+        <small class="text-muted">Mengambil data evaluasi terhitung otomatis dari Google Sheets (PredictionComparison)</small>
     </div>
 
     <!-- Error State -->
-    <div id="comparisonErrorBox" class="alert-box alert-error mb-md hidden">
-        <span class="icon">⚠️</span>
-        <span id="comparisonErrorText">Gagal memuat data perbandingan.</span>
+    <div id="comparisonErrorBox" class="alert-box alert-error mb-md hidden" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <span class="icon">⚠️</span>
+            <span id="comparisonErrorText">Gagal memuat data perbandingan.</span>
+        </div>
+        <button type="button" class="btn btn-sm btn-outline" onclick="loadComparisonData(currentPeriod)" style="background: var(--bg-card, #ffffff); cursor: pointer;">
+            🔄 Coba Lagi
+        </button>
     </div>
 
     <!-- Main Content Container (Hidden until loaded) -->
@@ -454,10 +459,30 @@
         if (errorBox) errorBox.classList.add('hidden');
         if (refreshBtn) refreshBtn.classList.add('rotating');
 
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 detik client timeout
+
         try {
-            const resp = await fetch(`/api/comparison/data?period=${currentPeriod}&station=WARR`);
+            const resp = await fetch(`/api/comparison/data?period=${currentPeriod}&station=WARR`, {
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+
+            if (!resp.ok) {
+                let errText = `Server mengembalikan status HTTP ${resp.status}`;
+                try {
+                    const errJson = await resp.json();
+                    if (errJson && errJson.error) errText = errJson.error;
+                } catch (_) {
+                    if (resp.status === 504) {
+                        errText = "Koneksi server timeout (504 Gateway Timeout). Data sedang dihitung dan disimpan di Google Sheets, silakan klik 'Coba Lagi'.";
+                    }
+                }
+                throw new Error(errText);
+            }
+
             const data = await resp.json();
-            if (!resp.ok || data.status === 'error') {
+            if (data.status === 'error') {
                 throw new Error(data.error || 'Gagal memuat hasil perbandingan.');
             }
 
@@ -466,9 +491,14 @@
             if (loading) loading.classList.add('hidden');
             if (content) content.classList.remove('hidden');
         } catch (e) {
+            clearTimeout(timeoutId);
+            console.error('[COMPARISON] Fetch error:', e);
             if (loading) loading.classList.add('hidden');
             if (errorBox) {
-                document.getElementById('comparisonErrorText').textContent = e.message;
+                let msg = e.name === 'AbortError' 
+                    ? "Permintaan data melampaui batas waktu (Timeout 15 detik). Silakan klik 'Coba Lagi'."
+                    : (e.message || 'Terjadi kesalahan jaringan.');
+                document.getElementById('comparisonErrorText').textContent = msg;
                 errorBox.classList.remove('hidden');
             }
         } finally {

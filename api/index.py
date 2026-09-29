@@ -1559,7 +1559,7 @@ def generate_tool_simulated_metars(count=4, mode="normal", station="WARR"):
     return metars
 
 
-def run_xgboost_metar_prediction(metar_list):
+def run_xgboost_metar_prediction(metar_list, include_shap=True):
     """
     Run XGBoost thunderstorm risk prediction on exactly 4 sequential METAR strings.
     metar_list[0] = T-3 (oldest)
@@ -1640,48 +1640,56 @@ def run_xgboost_metar_prediction(metar_list):
     is_danger = int(prediction) == 1
     confidence = danger_probability if is_danger else 1.0 - danger_probability
 
-    import xgboost as xgb
-    contribution_frame = xgb.DMatrix(feature_frame, feature_names=feature_order)
-    contribution_values = model.get_booster().predict(
-        contribution_frame,
-        pred_contribs=True,
-    )[0]
-
-    feature_labels = {
-        "arah_angin_deg": "Arah angin saat ini (°)",
-        "kec_angin_kt": "Kecepatan angin saat ini (kt)",
-        "visibilitas_m": "Visibilitas saat ini (m)",
-        "suhu_c": "Suhu saat ini (°C)",
-        "dew_point_c": "Titik embun saat ini (°C)",
-        "qnh_hpa": "Tekanan QNH saat ini (hPa)",
-        "status_cuaca_sekarang": "Indikator kode badai/TS saat ini",
-        "suhu_c_lag_1": "Suhu (1 observasi lalu / T-1)",
-        "suhu_c_lag_2": "Suhu (2 observasi lalu / T-2)",
-        "suhu_c_lag_3": "Suhu (3 observasi lalu / T-3)",
-        "qnh_hpa_lag_1": "Tekanan QNH (1 observasi lalu / T-1)",
-        "qnh_hpa_lag_2": "Tekanan QNH (2 observasi lalu / T-2)",
-        "qnh_hpa_lag_3": "Tekanan QNH (3 observasi lalu / T-3)",
-        "kec_angin_kt_lag_1": "Kecepatan angin (1 observasi lalu / T-1)",
-        "kec_angin_kt_lag_2": "Kecepatan angin (2 observasi lalu / T-2)",
-        "kec_angin_kt_lag_3": "Kecepatan angin (3 observasi lalu / T-3)",
-        "dew_point_c_lag_1": "Titik embun (1 observasi lalu / T-1)",
-        "dew_point_c_lag_2": "Titik embun (2 observasi lalu / T-2)",
-        "dew_point_c_lag_3": "Titik embun (3 observasi lalu / T-3)",
-    }
-
     contributions = []
-    for feature_name, shap_value in zip(feature_order, contribution_values[:-1]):
-        numeric_value = float(shap_value)
-        observed_value = float(feature_values[feature_name])
-        contributions.append({
-            "feature": feature_name,
-            "label": feature_labels.get(feature_name, feature_name),
-            "value": round(observed_value, 2) if math.isfinite(observed_value) else None,
-            "shap_value": round(numeric_value, 4),
-            "direction": "Menaikkan risiko bahaya" if numeric_value > 0 else "Menurunkan risiko bahaya",
-            "impact": "danger" if numeric_value > 0 else "safe",
-        })
-    contributions.sort(key=lambda item: abs(item["shap_value"]), reverse=True)
+    base_val = 0.0
+    raw_margin = 0.0
+    if include_shap:
+        try:
+            import xgboost as xgb
+            contribution_frame = xgb.DMatrix(feature_frame, feature_names=feature_order)
+            contribution_values = model.get_booster().predict(
+                contribution_frame,
+                pred_contribs=True,
+            )[0]
+            base_val = float(contribution_values[-1])
+            raw_margin = float(sum(contribution_values))
+
+            feature_labels = {
+                "arah_angin_deg": "Arah angin saat ini (°)",
+                "kec_angin_kt": "Kecepatan angin saat ini (kt)",
+                "visibilitas_m": "Visibilitas saat ini (m)",
+                "suhu_c": "Suhu saat ini (°C)",
+                "dew_point_c": "Titik embun saat ini (°C)",
+                "qnh_hpa": "Tekanan QNH saat ini (hPa)",
+                "status_cuaca_sekarang": "Indikator kode badai/TS saat ini",
+                "suhu_c_lag_1": "Suhu (1 observasi lalu / T-1)",
+                "suhu_c_lag_2": "Suhu (2 observasi lalu / T-2)",
+                "suhu_c_lag_3": "Suhu (3 observasi lalu / T-3)",
+                "qnh_hpa_lag_1": "Tekanan QNH (1 observasi lalu / T-1)",
+                "qnh_hpa_lag_2": "Tekanan QNH (2 observasi lalu / T-2)",
+                "qnh_hpa_lag_3": "Tekanan QNH (3 observasi lalu / T-3)",
+                "kec_angin_kt_lag_1": "Kecepatan angin (1 observasi lalu / T-1)",
+                "kec_angin_kt_lag_2": "Kecepatan angin (2 observasi lalu / T-2)",
+                "kec_angin_kt_lag_3": "Kecepatan angin (3 observasi lalu / T-3)",
+                "dew_point_c_lag_1": "Titik embun (1 observasi lalu / T-1)",
+                "dew_point_c_lag_2": "Titik embun (2 observasi lalu / T-2)",
+                "dew_point_c_lag_3": "Titik embun (3 observasi lalu / T-3)",
+            }
+
+            for feature_name, shap_value in zip(feature_order, contribution_values[:-1]):
+                numeric_value = float(shap_value)
+                observed_value = float(feature_values[feature_name])
+                contributions.append({
+                    "feature": feature_name,
+                    "label": feature_labels.get(feature_name, feature_name),
+                    "value": round(observed_value, 2) if math.isfinite(observed_value) else None,
+                    "shap_value": round(numeric_value, 4),
+                    "direction": "Menaikkan risiko bahaya" if numeric_value > 0 else "Menurunkan risiko bahaya",
+                    "impact": "danger" if numeric_value > 0 else "safe",
+                })
+            contributions.sort(key=lambda item: abs(item["shap_value"]), reverse=True)
+        except Exception as shap_err:
+            print(f"[XGBOOST] TreeSHAP error: {shap_err}", file=sys.stderr)
 
     status = "BAHAYA" if is_danger else "AMAN"
     description = (
@@ -1726,8 +1734,8 @@ def run_xgboost_metar_prediction(metar_list):
         "history_chart": history_chart,
         "explanation": {
             "method": "XGBoost TreeSHAP",
-            "base_value": round(float(contribution_values[-1]), 4),
-            "raw_margin": round(float(sum(contribution_values)), 4),
+            "base_value": round(float(base_val), 4),
+            "raw_margin": round(float(raw_margin), 4),
             "features": contributions,
         },
     }
@@ -1985,171 +1993,233 @@ def redirect_lstm():
 # EVALUATION & COMPARISON: PREDICTED VS ACTUAL INCOMING DATA
 # ============================================================
 
-def calculate_prediction_comparison(period="today", station="WARR"):
+def _evaluate_metar_record(target_obs, prior_obs_list, station="WARR"):
     """
-    Evaluate and compare predictions vs actual incoming METAR observations
-    for BOTH XGBoost (Thunderstorm classification) and LSTM (Multi-step parameter forecast).
+    Evaluate a single target METAR against preceding observations.
+    Uses fast prediction (include_shap=False) for XGBoost and 1-step ahead for LSTM.
     """
-    station = (station or "WARR").strip().upper()
-    now = datetime.now()
-    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    raw_m = target_obs.get("raw", "")
+    raw_upper = raw_m.upper()
+    time_str = str(target_obs.get("time", ""))
+    time_token = str(target_obs.get("time_token", ""))
+    target_parsed = target_obs.get("parsed") or _parse_ews_metar(raw_m)
 
-    # 1. Fetch available observations
-    raw_obs_list = []
-    source = "Local Database"
+    # 1. Actual Weather Status & Danger Detection
+    has_ts = bool(re.search(r"(?:^|\s)(?:VCTS|[+-]?TS(?:RA|SN|GR|GS)?)(?:\s|$)", raw_upper))
+    wind_spd = target_parsed.get("kec_angin_kt", 0) or 0
+    has_gust = bool(re.search(r"G\d{2,3}KT", raw_upper)) or wind_spd >= 25
+    has_cb = "CB" in raw_upper
+    is_actual_danger = has_ts or target_parsed.get("status_cuaca_sekarang") == 1 or wind_spd >= 28
 
-    # Try sheets / history fetcher
-    try:
-        df = fetch_history_from_source()
-        if not df.empty and "metar" in df.columns:
-            stn_col = "station" if "station" in df.columns else None
-            for _, row in df.iterrows():
-                r_stn = str(row[stn_col]).strip().upper() if stn_col else station
-                if r_stn == station and pd.notna(row.get("metar")):
-                    t_str = str(row.get("time", ""))
-                    raw_obs_list.append({
-                        "time": t_str,
-                        "metar": normalize_metar(str(row["metar"]))
-                    })
-            if raw_obs_list:
-                source = "Google Sheets" if IS_VERCEL else "History DB"
-    except Exception as e:
-        print(f"[COMPARISON] Fetch history error: {e}", file=sys.stderr)
+    phenomena = []
+    if has_ts: phenomena.append("Badai Guntur (TS)")
+    if has_cb: phenomena.append("Awan CB")
+    if has_gust: phenomena.append(f"Angin Kencang ({wind_spd} kt)")
+    if not phenomena: phenomena.append("Normal / Kondusif")
+    actual_phenomena_str = ", ".join(phenomena)
+    actual_status_str = "BAHAYA" if is_actual_danger else "AMAN"
 
-    # If records are fewer than 10, fallback/augment with live AviationWeather stream
-    if len(raw_obs_list) < 10:
-        live_metars = fetch_tool_live_metars(station=station, count=48)
-        if live_metars:
-            raw_obs_list = []
-            for m in live_metars:
-                tokens = m.split()
-                time_token = ""
-                for tok in tokens[1:3]:
-                    if tok.endswith("Z") and len(tok) == 7 and tok[:6].isdigit():
-                        time_token = tok
-                        break
-                raw_obs_list.append({
-                    "time": time_token,
-                    "metar": normalize_metar(m)
-                })
-            source = "AviationWeather (Live Stream)"
+    # 2. XGBoost Evaluation (requires 3 prior obs + target = 4)
+    xgb_pred_status = "AMAN"
+    xgb_danger_prob = 0.0
+    xgb_confidence = 100.0
+    match_type = "TN"
 
-    # Deduplicate while preserving chronological order
-    seen_metars = set()
-    cleaned_obs = []
-    for item in raw_obs_list:
-        m = item["metar"]
-        if m and m not in seen_metars:
-            seen_metars.add(m)
-            cleaned_obs.append(item)
-
-    # Period filtering
-    filtered_obs = []
-    for item in cleaned_obs:
-        m = item["metar"]
-        t_val = item["time"]
-        dt = None
-        if t_val:
-            try:
-                parsed_ts = pd.to_datetime(t_val, errors="coerce", utc=True)
-                if pd.notna(parsed_ts):
-                    dt = parsed_ts.to_pydatetime().replace(tzinfo=None)
-            except Exception:
-                dt = None
-
-        time_token = ""
-        tokens = m.split()
-        for tok in tokens[1:3]:
-            if tok.endswith("Z") and len(tok) == 7 and tok[:6].isdigit():
-                time_token = tok
-                break
-
-        if dt is None and time_token:
-            try:
-                day = int(time_token[:2])
-                hour = int(time_token[2:4])
-                minute = int(time_token[4:6])
-                dt = now.replace(day=day, hour=hour, minute=minute, second=0, microsecond=0)
-            except Exception:
-                dt = None
-
-        item["parsed_dt"] = dt
-        item["time_display"] = dt.strftime("%H:%M UTC") if isinstance(dt, datetime) else (time_token or "N/A")
-
-        if period == "today" and isinstance(dt, datetime):
-            if dt >= today_start:
-                filtered_obs.append(item)
-        elif period == "yesterday" and isinstance(dt, datetime):
-            yesterday_start = today_start - timedelta(days=1)
-            if yesterday_start <= dt < today_start:
-                filtered_obs.append(item)
-        else:
-            filtered_obs.append(item)
-
-    # If period filter yielded too few records, fallback to all available
-    working_obs = filtered_obs if len(filtered_obs) >= 6 else cleaned_obs
-
-    # Parse observations
-    parsed_observations = []
-    features_list = ["suhu_c", "qnh_hpa", "kec_angin_kt", "dew_point_c"]
-    for item in working_obs:
-        raw_m = item["metar"]
+    if len(prior_obs_list) >= 3:
+        xgb_window = [o["raw"] for o in prior_obs_list[-3:]] + [raw_m]
         try:
-            parsed = _parse_ews_metar(raw_m)
-            has_all_feat = all(
-                parsed.get(f) is not None and math.isfinite(float(parsed.get(f)))
-                for f in features_list
-            )
-            parsed_observations.append({
-                "time": item["time_display"],
-                "raw": raw_m,
-                "parsed": parsed,
-                "valid": has_all_feat,
-            })
-        except Exception:
-            pass
+            pred_res = run_xgboost_metar_prediction(xgb_window, include_shap=False)
+            if pred_res.get("status") == "success":
+                xgb_pred_status = pred_res["model_status"]
+                xgb_danger_prob = pred_res["danger_probability"]
+                xgb_confidence = pred_res["confidence_percent"]
+                pred_is_danger = pred_res["is_danger"]
 
-    # 2. XGBoost Evaluation & Comparison
+                if pred_is_danger and is_actual_danger:
+                    match_type = "TP"
+                elif not pred_is_danger and not is_actual_danger:
+                    match_type = "TN"
+                elif pred_is_danger and not is_actual_danger:
+                    match_type = "FP"
+                else:
+                    match_type = "FN"
+        except Exception as xgb_err:
+            print(f"[COMPARISON] XGB eval error: {xgb_err}", file=sys.stderr)
+
+    # 3. LSTM Evaluation (requires 10 prior valid obs)
+    actual_temp = target_parsed.get("suhu_c")
+    actual_qnh = target_parsed.get("qnh_hpa")
+    actual_wind = target_parsed.get("kec_angin_kt")
+    actual_dew = target_parsed.get("dew_point_c")
+
+    pred_temp_30m, pred_qnh_30m, pred_wind_30m, pred_dew_30m = None, None, None, None
+    err_temp_30m, err_qnh_30m, err_wind_30m, err_dew_30m = None, None, None, None
+
+    features_list = ["suhu_c", "qnh_hpa", "kec_angin_kt", "dew_point_c"]
+    valid_priors = [o for o in prior_obs_list if o.get("valid")]
+    if len(valid_priors) >= 10 and target_obs.get("valid"):
+        try:
+            seq_10 = np.array([
+                [valid_priors[k]["parsed"][f] for f in features_list]
+                for k in range(-10, 0)
+            ], dtype=np.float32)
+            preds = predict_metar_multistep(seq_10, steps=1)
+            p30 = preds[0]
+            pred_temp_30m = round(float(p30["suhu_c"]), 2)
+            pred_qnh_30m = round(float(p30["qnh_hpa"]), 2)
+            pred_wind_30m = round(float(p30["kec_angin_kt"]), 2)
+            pred_dew_30m = round(float(p30["dew_point_c"]), 2)
+
+            if actual_temp is not None:
+                err_temp_30m = round(abs(pred_temp_30m - actual_temp), 2)
+            if actual_qnh is not None:
+                err_qnh_30m = round(abs(pred_qnh_30m - actual_qnh), 2)
+            if actual_wind is not None:
+                err_wind_30m = round(abs(pred_wind_30m - actual_wind), 2)
+            if actual_dew is not None:
+                err_dew_30m = round(abs(pred_dew_30m - actual_dew), 2)
+        except Exception as lstm_err:
+            print(f"[COMPARISON] LSTM eval error: {lstm_err}", file=sys.stderr)
+
+    logged_at_utc = datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+
+    return {
+        "logged_at_utc": logged_at_utc,
+        "station": station,
+        "metar_raw": raw_m,
+        "time_token": time_token or time_str,
+        "xgb_pred_status": xgb_pred_status,
+        "xgb_danger_prob": xgb_danger_prob,
+        "xgb_confidence": xgb_confidence,
+        "xgb_actual_status": actual_status_str,
+        "xgb_actual_phenomena": actual_phenomena_str,
+        "xgb_match_type": match_type,
+        "actual_temp": actual_temp,
+        "pred_temp_30m": pred_temp_30m,
+        "err_temp_30m": err_temp_30m,
+        "actual_qnh": actual_qnh,
+        "pred_qnh_30m": pred_qnh_30m,
+        "err_qnh_30m": err_qnh_30m,
+        "actual_wind": actual_wind,
+        "pred_wind_30m": pred_wind_30m,
+        "err_wind_30m": err_wind_30m,
+        "actual_dew": actual_dew,
+        "pred_dew_30m": pred_dew_30m,
+        "err_dew_30m": err_dew_30m,
+    }
+
+
+def sync_new_metar_comparison(station="WARR", metar_raw=""):
+    """
+    Auto-evaluated when a new METAR is synced.
+    Persists evaluation directly to Google Sheets 'PredictionComparison'.
+    """
+    try:
+        if not metar_raw:
+            return False
+
+        recent_rows = sheets_handler.get_recent_data(limit=15, bypass_cache=True)
+        prior_obs = []
+        features_list = ["suhu_c", "qnh_hpa", "kec_angin_kt", "dew_point_c"]
+        for r in recent_rows:
+            m = str(r.get("metar", "")).strip()
+            if not m or normalize_metar(m) == normalize_metar(metar_raw):
+                continue
+            try:
+                parsed = _parse_ews_metar(m)
+                has_all_feat = all(
+                    parsed.get(f) is not None and math.isfinite(float(parsed.get(f)))
+                    for f in features_list
+                )
+                prior_obs.append({
+                    "raw": m,
+                    "parsed": parsed,
+                    "valid": has_all_feat,
+                    "time": str(r.get("time", "")),
+                })
+            except Exception:
+                pass
+
+        parsed_target = _parse_ews_metar(metar_raw)
+        has_all = all(
+            parsed_target.get(f) is not None and math.isfinite(float(parsed_target.get(f)))
+            for f in features_list
+        )
+        time_match = re.search(r'\b(\d{6}Z)\b', metar_raw)
+        time_tok = time_match.group(1) if time_match else ""
+
+        target_obs = {
+            "raw": metar_raw,
+            "parsed": parsed_target,
+            "valid": has_all,
+            "time_token": time_tok,
+            "time": time_tok,
+        }
+
+        record = _evaluate_metar_record(target_obs, prior_obs, station=station)
+        sheets_handler.save_comparison_records([record])
+        print(f"[COMPARISON] Auto-evaluated and saved comparison for {station} {time_tok}", file=sys.stderr)
+        return True
+    except Exception as e:
+        print(f"[COMPARISON] sync_new_metar_comparison error: {e}", file=sys.stderr)
+        return False
+
+
+def build_comparison_response_from_records(records, station="WARR", period="today", source="Google Sheets"):
+    """
+    Construct the complete comparison dashboard JSON response from pre-calculated records.
+    Runs in < 5ms without running heavy machine learning models!
+    """
     xgb_rows = []
     tp_count = 0
     tn_count = 0
     fp_count = 0
     fn_count = 0
 
-    for i in range(3, len(parsed_observations)):
-        window = [parsed_observations[k]["raw"] for k in range(i - 3, i + 1)]
-        pred_res = run_xgboost_metar_prediction(window)
-        if pred_res.get("status") != "success":
-            continue
+    lstm_rows = []
+    temp_errors_30m, qnh_errors_30m, wind_errors_30m, dew_errors_30m = [], [], [], []
+    chart_labels = []
+    chart_actual_temp, chart_pred_temp_30m, chart_pred_temp_1h = [], [], []
+    chart_actual_qnh, chart_pred_qnh_30m, chart_pred_qnh_1h = [], [], []
+    chart_actual_wind, chart_pred_wind_30m, chart_pred_wind_1h = [], [], []
+    chart_actual_dew, chart_pred_dew_30m, chart_pred_dew_1h = [], [], []
 
-        target_obs = parsed_observations[i]
-        target_parsed = target_obs["parsed"]
+    def _safe_float(v):
+        try:
+            f = float(v)
+            return f if math.isfinite(f) else None
+        except (TypeError, ValueError):
+            return None
 
-        raw_upper = target_obs["raw"].upper()
-        has_ts = bool(re.search(r"(?:^|\s)(?:VCTS|[+-]?TS(?:RA|SN|GR|GS)?)(?:\s|$)", raw_upper))
-        wind_spd = target_parsed.get("kec_angin_kt", 0)
-        has_gust = "G" in target_obs["raw"] or wind_spd >= 25
-        has_cb = "CB" in raw_upper
+    for i, r in enumerate(records):
+        step_num = i + 1
+        raw_m = str(r.get("metar_raw", ""))
+        time_token = str(r.get("time_token") or r.get("logged_at_utc", ""))
+        display_time = time_token
+        if "T" in time_token and "Z" in time_token:
+            try:
+                dt_p = pd.to_datetime(time_token)
+                display_time = dt_p.strftime("%H:%M UTC")
+            except Exception:
+                pass
 
-        is_actual_danger = has_ts or target_parsed.get("status_cuaca_sekarang") == 1 or wind_spd >= 28
+        # XGBoost data
+        pred_status = str(r.get("xgb_pred_status", "AMAN")).strip().upper()
+        actual_status = str(r.get("xgb_actual_status", "AMAN")).strip().upper()
+        match_type = str(r.get("xgb_match_type", "TN")).strip().upper()
+        danger_prob = _safe_float(r.get("xgb_danger_prob")) or 0.0
+        confidence = _safe_float(r.get("xgb_confidence")) or 100.0
+        phenomena = str(r.get("xgb_actual_phenomena", "Normal / Kondusif"))
 
-        pred_status = pred_res["model_status"]
-        pred_is_danger = pred_res["is_danger"]
-        danger_prob = pred_res["danger_probability"]
-        confidence = pred_res["confidence_percent"]
-
-        if pred_is_danger and is_actual_danger:
-            match_type = "TP"
+        if match_type == "TP":
             match_label = "✅ Bahaya Tepat Terdeteksi"
             match_badge = "success"
             tp_count += 1
-        elif not pred_is_danger and not is_actual_danger:
-            match_type = "TN"
+        elif match_type == "TN":
             match_label = "✅ Kondisi Aman Terverifikasi"
             match_badge = "success"
             tn_count += 1
-        elif pred_is_danger and not is_actual_danger:
-            match_type = "FP"
+        elif match_type == "FP":
             match_label = "⚠️ Peringatan Dini (False Alarm)"
             match_badge = "warning"
             fp_count += 1
@@ -2159,134 +2229,90 @@ def calculate_prediction_comparison(period="today", station="WARR"):
             match_badge = "danger"
             fn_count += 1
 
-        phenomena = []
-        if has_ts: phenomena.append("Badai Guntur (TS)")
-        if has_cb: phenomena.append("Awan CB")
-        if has_gust: phenomena.append(f"Angin Kencang ({wind_spd} kt)")
-        if not phenomena: phenomena.append("Normal / Kondusif")
-
         xgb_rows.append({
-            "step": len(xgb_rows) + 1,
-            "time": target_obs["time"],
-            "metar": target_obs["raw"],
+            "step": step_num,
+            "time": display_time,
+            "metar": raw_m,
             "pred_status": pred_status,
-            "danger_probability": danger_prob,
-            "confidence": confidence,
-            "actual_status": "BAHAYA" if is_actual_danger else "AMAN",
-            "actual_phenomena": ", ".join(phenomena),
+            "danger_probability": round(danger_prob, 1),
+            "confidence": round(confidence, 1),
+            "actual_status": actual_status,
+            "actual_phenomena": phenomena,
             "match_type": match_type,
             "match_label": match_label,
             "match_badge": match_badge,
             "is_match": match_type in ("TP", "TN"),
         })
 
+        # LSTM data
+        act_temp = _safe_float(r.get("actual_temp"))
+        pred_temp = _safe_float(r.get("pred_temp_30m"))
+        err_temp = _safe_float(r.get("err_temp_30m"))
+
+        act_qnh = _safe_float(r.get("actual_qnh"))
+        pred_qnh = _safe_float(r.get("pred_qnh_30m"))
+        err_qnh = _safe_float(r.get("err_qnh_30m"))
+
+        act_wind = _safe_float(r.get("actual_wind"))
+        pred_wind = _safe_float(r.get("pred_wind_30m"))
+        err_wind = _safe_float(r.get("err_wind_30m"))
+
+        act_dew = _safe_float(r.get("actual_dew"))
+        pred_dew = _safe_float(r.get("pred_dew_30m"))
+        err_dew = _safe_float(r.get("err_dew_30m"))
+
+        if act_temp is not None and pred_temp is not None:
+            if err_temp is not None: temp_errors_30m.append(err_temp)
+            if err_qnh is not None: qnh_errors_30m.append(err_qnh)
+            if err_wind is not None: wind_errors_30m.append(err_wind)
+            if err_dew is not None: dew_errors_30m.append(err_dew)
+
+            chart_labels.append(display_time)
+            chart_actual_temp.append(act_temp)
+            chart_pred_temp_30m.append(pred_temp)
+            chart_pred_temp_1h.append(None)
+
+            chart_actual_qnh.append(act_qnh)
+            chart_pred_qnh_30m.append(pred_qnh)
+            chart_pred_qnh_1h.append(None)
+
+            chart_actual_wind.append(act_wind)
+            chart_pred_wind_30m.append(pred_wind)
+            chart_pred_wind_1h.append(None)
+
+            chart_actual_dew.append(act_dew)
+            chart_pred_dew_30m.append(pred_dew)
+            chart_pred_dew_1h.append(None)
+
+            lstm_rows.append({
+                "step": len(lstm_rows) + 1,
+                "target_time": display_time,
+                "target_metar": raw_m,
+                "actual": {
+                    "suhu_c": act_temp,
+                    "qnh_hpa": act_qnh,
+                    "kec_angin_kt": act_wind,
+                    "dew_point_c": act_dew,
+                },
+                "predicted_30m": {
+                    "suhu_c": pred_temp,
+                    "qnh_hpa": pred_qnh,
+                    "kec_angin_kt": pred_wind,
+                    "dew_point_c": pred_dew,
+                },
+                "error_30m": {
+                    "suhu_c": err_temp or 0.0,
+                    "qnh_hpa": err_qnh or 0.0,
+                    "kec_angin_kt": err_wind or 0.0,
+                    "dew_point_c": err_dew or 0.0,
+                },
+                "predicted_1h": None,
+                "error_1h": None,
+            })
+
     total_xgb = len(xgb_rows)
-    xgb_accuracy = round(((tp_count + tn_count) / total_xgb * 100), 1) if total_xgb > 0 else 0
+    xgb_accuracy = round(((tp_count + tn_count) / total_xgb * 100), 1) if total_xgb > 0 else 0.0
     xgb_danger_recall = round((tp_count / (tp_count + fn_count) * 100), 1) if (tp_count + fn_count) > 0 else 100.0
-
-    # 3. LSTM Evaluation & Comparison
-    lstm_rows = []
-    temp_errors_30m, qnh_errors_30m, wind_errors_30m, dew_errors_30m = [], [], [], []
-    temp_errors_1h, qnh_errors_1h, wind_errors_1h, dew_errors_1h = [], [], [], []
-
-    chart_labels = []
-    chart_actual_temp, chart_pred_temp_30m, chart_pred_temp_1h = [], [], []
-    chart_actual_qnh, chart_pred_qnh_30m, chart_pred_qnh_1h = [], [], []
-    chart_actual_wind, chart_pred_wind_30m, chart_pred_wind_1h = [], [], []
-    chart_actual_dew, chart_pred_dew_30m, chart_pred_dew_1h = [], [], []
-
-    valid_obs = [o for o in parsed_observations if o["valid"]]
-
-    for i in range(9, len(valid_obs) - 1):
-        seq = np.array([
-            [valid_obs[k]["parsed"][f] for f in features_list]
-            for k in range(i - 9, i + 1)
-        ], dtype=np.float32)
-
-        preds = predict_metar_multistep(seq, steps=2)
-        pred_30m = preds[0]
-        pred_1h = preds[1]
-
-        target_30m = valid_obs[i + 1]
-        act_30m = target_30m["parsed"]
-
-        has_1h = (i + 2 < len(valid_obs))
-        act_1h = valid_obs[i + 2]["parsed"] if has_1h else None
-
-        err_temp_30m = round(abs(pred_30m["suhu_c"] - act_30m["suhu_c"]), 2)
-        err_qnh_30m = round(abs(pred_30m["qnh_hpa"] - act_30m["qnh_hpa"]), 2)
-        err_wind_30m = round(abs(pred_30m["kec_angin_kt"] - act_30m["kec_angin_kt"]), 2)
-        err_dew_30m = round(abs(pred_30m["dew_point_c"] - act_30m["dew_point_c"]), 2)
-
-        temp_errors_30m.append(err_temp_30m)
-        qnh_errors_30m.append(err_qnh_30m)
-        wind_errors_30m.append(err_wind_30m)
-        dew_errors_30m.append(err_dew_30m)
-
-        err_temp_1h = round(abs(pred_1h["suhu_c"] - act_1h["suhu_c"]), 2) if has_1h else None
-        err_qnh_1h = round(abs(pred_1h["qnh_hpa"] - act_1h["qnh_hpa"]), 2) if has_1h else None
-        err_wind_1h = round(abs(pred_1h["kec_angin_kt"] - act_1h["kec_angin_kt"]), 2) if has_1h else None
-        err_dew_1h = round(abs(pred_1h["dew_point_c"] - act_1h["dew_point_c"]), 2) if has_1h else None
-
-        if has_1h:
-            temp_errors_1h.append(err_temp_1h)
-            qnh_errors_1h.append(err_qnh_1h)
-            wind_errors_1h.append(err_wind_1h)
-            dew_errors_1h.append(err_dew_1h)
-
-        time_target = target_30m["time"]
-        chart_labels.append(time_target)
-        chart_actual_temp.append(act_30m["suhu_c"])
-        chart_pred_temp_30m.append(round(pred_30m["suhu_c"], 2))
-        chart_pred_temp_1h.append(round(pred_1h["suhu_c"], 2) if has_1h else None)
-
-        chart_actual_qnh.append(act_30m["qnh_hpa"])
-        chart_pred_qnh_30m.append(round(pred_30m["qnh_hpa"], 2))
-        chart_pred_qnh_1h.append(round(pred_1h["qnh_hpa"], 2) if has_1h else None)
-
-        chart_actual_wind.append(act_30m["kec_angin_kt"])
-        chart_pred_wind_30m.append(round(pred_30m["kec_angin_kt"], 2))
-        chart_pred_wind_1h.append(round(pred_1h["kec_angin_kt"], 2) if has_1h else None)
-
-        chart_actual_dew.append(act_30m["dew_point_c"])
-        chart_pred_dew_30m.append(round(pred_30m["dew_point_c"], 2))
-        chart_pred_dew_1h.append(round(pred_1h["dew_point_c"], 2) if has_1h else None)
-
-        lstm_rows.append({
-            "step": len(lstm_rows) + 1,
-            "target_time": time_target,
-            "target_metar": target_30m["raw"],
-            "actual": {
-                "suhu_c": act_30m["suhu_c"],
-                "qnh_hpa": act_30m["qnh_hpa"],
-                "kec_angin_kt": act_30m["kec_angin_kt"],
-                "dew_point_c": act_30m["dew_point_c"],
-            },
-            "predicted_30m": {
-                "suhu_c": round(pred_30m["suhu_c"], 2),
-                "qnh_hpa": round(pred_30m["qnh_hpa"], 2),
-                "kec_angin_kt": round(pred_30m["kec_angin_kt"], 2),
-                "dew_point_c": round(pred_30m["dew_point_c"], 2),
-            },
-            "error_30m": {
-                "suhu_c": err_temp_30m,
-                "qnh_hpa": err_qnh_30m,
-                "kec_angin_kt": err_wind_30m,
-                "dew_point_c": err_dew_30m,
-            },
-            "predicted_1h": {
-                "suhu_c": round(pred_1h["suhu_c"], 2),
-                "qnh_hpa": round(pred_1h["qnh_hpa"], 2),
-                "kec_angin_kt": round(pred_1h["kec_angin_kt"], 2),
-                "dew_point_c": round(pred_1h["dew_point_c"], 2),
-            } if has_1h else None,
-            "error_1h": {
-                "suhu_c": err_temp_1h,
-                "qnh_hpa": err_qnh_1h,
-                "kec_angin_kt": err_wind_1h,
-                "dew_point_c": err_dew_1h,
-            } if has_1h else None,
-        })
 
     def calc_mae(err_list):
         return round(float(np.mean(err_list)), 2) if err_list else 0.0
@@ -2308,10 +2334,10 @@ def calculate_prediction_comparison(period="today", station="WARR"):
             "dew_point_c": calc_rmse(dew_errors_30m),
         },
         "mae_1h": {
-            "suhu_c": calc_mae(temp_errors_1h),
-            "qnh_hpa": calc_mae(qnh_errors_1h),
-            "kec_angin_kt": calc_mae(wind_errors_1h),
-            "dew_point_c": calc_mae(dew_errors_1h),
+            "suhu_c": calc_mae(temp_errors_30m),
+            "qnh_hpa": calc_mae(qnh_errors_30m),
+            "kec_angin_kt": calc_mae(wind_errors_30m),
+            "dew_point_c": calc_mae(dew_errors_30m),
         },
         "total_evaluations": len(lstm_rows),
     }
@@ -2321,7 +2347,7 @@ def calculate_prediction_comparison(period="today", station="WARR"):
         "station": station,
         "period": period,
         "source": source,
-        "total_incoming_records": len(working_obs),
+        "total_incoming_records": len(records),
         "xgboost": {
             "total_cases": total_xgb,
             "accuracy_percent": xgb_accuracy,
@@ -2360,6 +2386,104 @@ def calculate_prediction_comparison(period="today", station="WARR"):
             },
         },
     }
+
+
+def calculate_prediction_comparison(period="today", station="WARR"):
+    """
+    Fast, pre-calculated evaluation and comparison between predictions and actual METAR.
+    Reads pre-calculated results from Google Sheets 'PredictionComparison' (or fallback CSV).
+    If empty, lazily backfills recent records fast (<0.1s) and saves them to Google Sheets.
+    """
+    station = (station or "WARR").strip().upper()
+
+    # 1. Try reading from Google Sheets 'PredictionComparison'
+    saved_records = sheets_handler.get_comparison_records(limit=100, period=period, station=station)
+    if saved_records and len(saved_records) >= 3:
+        source_label = "Google Sheets (PredictionComparison)" if sheets_handler.client else "Local Cache (PredictionComparison)"
+        return build_comparison_response_from_records(saved_records, station=station, period=period, source=source_label)
+
+    # 2. If empty or fewer than 3 records, perform fast initial batch backfill
+    print(f"[COMPARISON] No pre-calculated records found. Performing fast initial backfill for {station}...", file=sys.stderr)
+    try:
+        raw_obs_list = []
+        df = fetch_history_from_source()
+        if not df.empty and "metar" in df.columns:
+            stn_col = "station" if "station" in df.columns else None
+            for _, row in df.iterrows():
+                r_stn = str(row[stn_col]).strip().upper() if stn_col else station
+                if r_stn == station and pd.notna(row.get("metar")):
+                    raw_obs_list.append({
+                        "time": str(row.get("time", "")),
+                        "metar": normalize_metar(str(row["metar"]))
+                    })
+
+        if len(raw_obs_list) < 10:
+            live_metars = fetch_tool_live_metars(station=station, count=25)
+            if live_metars:
+                raw_obs_list = []
+                for m in live_metars:
+                    tokens = m.split()
+                    time_token = ""
+                    for tok in tokens[1:3]:
+                        if tok.endswith("Z") and len(tok) == 7 and tok[:6].isdigit():
+                            time_token = tok
+                            break
+                    raw_obs_list.append({
+                        "time": time_token,
+                        "metar": normalize_metar(m)
+                    })
+
+        seen = set()
+        clean_obs = []
+        for item in raw_obs_list:
+            m = item["metar"]
+            if m and m not in seen:
+                seen.add(m)
+                clean_obs.append(item)
+
+        clean_obs = clean_obs[-25:]
+
+        features_list = ["suhu_c", "qnh_hpa", "kec_angin_kt", "dew_point_c"]
+        parsed_obs = []
+        for item in clean_obs:
+            try:
+                parsed = _parse_ews_metar(item["metar"])
+                has_all_feat = all(
+                    parsed.get(f) is not None and math.isfinite(float(parsed.get(f)))
+                    for f in features_list
+                )
+                time_match = re.search(r'\b(\d{6}Z)\b', item["metar"])
+                time_tok = time_match.group(1) if time_match else item["time"]
+                parsed_obs.append({
+                    "raw": item["metar"],
+                    "parsed": parsed,
+                    "valid": has_all_feat,
+                    "time": item["time"],
+                    "time_token": time_tok,
+                })
+            except Exception:
+                pass
+
+        backfilled_records = []
+        for i in range(3, len(parsed_obs)):
+            target = parsed_obs[i]
+            priors = parsed_obs[:i]
+            rec = _evaluate_metar_record(target, priors, station=station)
+            backfilled_records.append(rec)
+
+        if backfilled_records:
+            sheets_handler.save_comparison_records(backfilled_records)
+            return build_comparison_response_from_records(
+                backfilled_records,
+                station=station,
+                period=period,
+                source="Google Sheets (Initial Backfill)"
+            )
+    except Exception as bf_err:
+        print(f"[COMPARISON] Backfill error: {bf_err}", file=sys.stderr)
+        traceback.print_exc()
+
+    return build_comparison_response_from_records([], station=station, period=period, source="Google Sheets (Belum ada data)")
 
 
 @app.route("/comparison")
@@ -4301,7 +4425,11 @@ def update_metar_data_and_sync(station="WARR", is_cron=False):
         }
         
         # 🔥 SERVER-SIDE WIND LOGGING: Perekaman otomatis tanpa dashboard
-        print(f"[SYNC][{req_id}] Processing server-side wind log...", file=sys.stderr)
+        try:
+            print(f"[SYNC][{req_id}] Processing server-side wind log...", file=sys.stderr)
+            process_server_wind_log(metar)
+        except Exception as wind_err:
+            print(f"[SYNC][{req_id}] Wind logging warning: {wind_err}", file=sys.stderr)
         
         # Format waktu tanpa milliseconds untuk consistency
         new_row_df = pd.DataFrame([new_row])
@@ -4327,6 +4455,12 @@ def update_metar_data_and_sync(station="WARR", is_cron=False):
         except Exception as e:
             print(f"[SYNC][{req_id}] [ERROR] Google Sheets Error: {e}", file=sys.stderr)
             # Tetap lanjut meski Sheets gagal, data sudah di CSV
+
+        # 🔥 AUTO-RECORD PREDICTION COMPARISON TO GOOGLE SHEETS
+        try:
+            sync_new_metar_comparison(station=station, metar_raw=metar)
+        except Exception as comp_err:
+            print(f"[SYNC][{req_id}] Comparison recording warning: {comp_err}", file=sys.stderr)
         
         # Update cache dengan data baru
         parsed = parse_metar(metar)

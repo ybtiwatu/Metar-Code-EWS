@@ -3,7 +3,7 @@ from google.oauth2.service_account import Credentials  # type: ignore
 import os
 import json
 import pandas as pd  # type: ignore
-from datetime import datetime
+from datetime import datetime, timedelta
 import time
 import sys
 
@@ -587,6 +587,205 @@ class GoogleSheetHandler:
             })
         
         return list(grouped.values())
+
+    @staticmethod
+    def _get_comparison_csv_path():
+        if os.environ.get("VERCEL"):
+            return "/tmp/prediction_comparison.csv"
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        data_dir = os.path.join(base_dir, "data")
+        os.makedirs(data_dir, exist_ok=True)
+        return os.path.join(data_dir, "prediction_comparison.csv")
+
+    def _get_comparison_worksheet(self):
+        """Get or initialize the dedicated 'PredictionComparison' worksheet in Google Sheets."""
+        if not self.client:
+            self._authenticate()
+        if not self.client:
+            return None
+
+        try:
+            spreadsheet = self.client.open_by_key(SPREADSHEET_ID)
+            try:
+                return spreadsheet.worksheet("PredictionComparison")
+            except gspread.WorksheetNotFound:
+                worksheet = spreadsheet.add_worksheet(
+                    title="PredictionComparison",
+                    rows="10000",
+                    cols="25",
+                )
+                headers = [
+                    "logged_at_utc", "station", "metar_raw", "time_token",
+                    "xgb_pred_status", "xgb_danger_prob", "xgb_confidence",
+                    "xgb_actual_status", "xgb_actual_phenomena", "xgb_match_type",
+                    "actual_temp", "pred_temp_30m", "err_temp_30m",
+                    "actual_qnh", "pred_qnh_30m", "err_qnh_30m",
+                    "actual_wind", "pred_wind_30m", "err_wind_30m",
+                    "actual_dew", "pred_dew_30m", "err_dew_30m"
+                ]
+                worksheet.append_row(headers, value_input_option="USER_ENTERED")
+                print("[SHEETS] Created 'PredictionComparison' worksheet with headers", file=sys.stderr)
+                return worksheet
+        except Exception as e:
+            print(f"[SHEETS] Error getting PredictionComparison worksheet: {e}", file=sys.stderr)
+            return None
+
+    def save_comparison_records(self, records) -> bool:
+        """
+        Append pre-calculated prediction vs actual comparison records to Google Sheets
+        in the 'PredictionComparison' worksheet. Deduplicates by metar_raw or time_token.
+        Also persists to local/temporary fallback CSV.
+        """
+        if not records:
+            return True
+        if isinstance(records, dict):
+            records = [records]
+
+        # 1. Always update local fallback CSV
+        try:
+            csv_path = self._get_comparison_csv_path()
+            new_df = pd.DataFrame(records)
+            if os.path.exists(csv_path):
+                existing_df = pd.read_csv(csv_path)
+                combined = pd.concat([existing_df, new_df], ignore_index=True)
+                subset_cols = [c for c in ["station", "metar_raw"] if c in combined.columns]
+                if subset_cols:
+                    combined.drop_duplicates(subset=subset_cols, keep="last", inplace=True)
+                combined.to_csv(csv_path, index=False)
+            else:
+                new_df.to_csv(csv_path, index=False)
+        except Exception as csv_err:
+            print(f"[SHEETS] Fallback CSV write error: {csv_err}", file=sys.stderr)
+
+        # Invalidate in-memory cache
+        self._cache.pop("comparison_records", None)
+
+        # 2. Append to Google Sheets
+        try:
+            worksheet = self._get_comparison_worksheet()
+            if worksheet is None:
+                return True  # Fallback CSV succeeded
+
+            all_vals = worksheet.get_all_values()
+            existing_metars = set()
+            if len(all_vals) > 1:
+                # metar_raw is index 2
+                for row in all_vals[-100:]:
+                    if len(row) > 2 and row[2]:
+                        existing_metars.add(row[2].strip())
+
+            rows_to_append = []
+            for r in records:
+                m_raw = str(r.get("metar_raw", "")).strip()
+                if m_raw and m_raw in existing_metars:
+                    continue
+
+                row_vals = [
+                    str(r.get("logged_at_utc", "")),
+                    str(r.get("station", "WARR")),
+                    m_raw,
+                    str(r.get("time_token", "")),
+                    str(r.get("xgb_pred_status", "")),
+                    self._as_float(r.get("xgb_danger_prob")),
+                    self._as_float(r.get("xgb_confidence")),
+                    str(r.get("xgb_actual_status", "")),
+                    str(r.get("xgb_actual_phenomena", "")),
+                    str(r.get("xgb_match_type", "")),
+                    self._as_float(r.get("actual_temp")),
+                    self._as_float(r.get("pred_temp_30m")),
+                    self._as_float(r.get("err_temp_30m")),
+                    self._as_float(r.get("actual_qnh")),
+                    self._as_float(r.get("pred_qnh_30m")),
+                    self._as_float(r.get("err_qnh_30m")),
+                    self._as_float(r.get("actual_wind")),
+                    self._as_float(r.get("pred_wind_30m")),
+                    self._as_float(r.get("err_wind_30m")),
+                    self._as_float(r.get("actual_dew")),
+                    self._as_float(r.get("pred_dew_30m")),
+                    self._as_float(r.get("err_dew_30m")),
+                ]
+                rows_to_append.append(row_vals)
+                if m_raw:
+                    existing_metars.add(m_raw)
+
+            if rows_to_append:
+                worksheet.append_rows(rows_to_append, value_input_option="USER_ENTERED")
+                print(f"[SHEETS] Appended {len(rows_to_append)} row(s) to 'PredictionComparison'", file=sys.stderr)
+                self._cache.pop("comparison_records", None)
+            return True
+        except Exception as e:
+            print(f"[SHEETS] Error saving comparison record: {e}", file=sys.stderr)
+            return False
+
+    def get_comparison_records(self, limit: int = 100, period: str = "today", station: str = "WARR", bypass_cache: bool = False) -> list:
+        """
+        Fetch pre-calculated comparison records from Google Sheets (or fallback CSV)
+        with fast in-memory caching.
+        """
+        station = (station or "WARR").strip().upper()
+        now = datetime.utcnow()
+        today_date = now.date()
+        yesterday_date = today_date - timedelta(days=1)
+
+        def _fetch():
+            # 1. Try Google Sheets
+            worksheet = self._get_comparison_worksheet()
+            if worksheet is not None:
+                try:
+                    records = worksheet.get_all_records()
+                    if records:
+                        print(f"[SHEETS] Read {len(records)} comparison records from Google Sheets", file=sys.stderr)
+                        return records
+                except Exception as e:
+                    print(f"[SHEETS] Error reading PredictionComparison: {e}", file=sys.stderr)
+
+            # 2. Fallback to local/temporary CSV
+            csv_path = self._get_comparison_csv_path()
+            if os.path.exists(csv_path):
+                try:
+                    df = pd.read_csv(csv_path)
+                    if not df.empty:
+                        print(f"[SHEETS] Read {len(df)} comparison records from fallback CSV", file=sys.stderr)
+                        return df.to_dict(orient="records")
+                except Exception as e:
+                    print(f"[SHEETS] Error reading comparison fallback CSV: {e}", file=sys.stderr)
+            return []
+
+        all_records = _fetch() if bypass_cache else self._get_cached_or_fetch("comparison_records", _fetch, ttl=180)
+        if not all_records:
+            return []
+
+        # Filter by station
+        station_records = [
+            r for r in all_records
+            if not r.get("station") or str(r.get("station")).strip().upper() == station
+        ]
+
+        # Filter by period
+        filtered = []
+        for r in station_records:
+            logged = str(r.get("logged_at_utc", ""))
+            r_date = None
+            if logged:
+                try:
+                    r_date = pd.to_datetime(logged, errors="coerce").date()
+                except Exception:
+                    pass
+
+            if period == "today":
+                if r_date and r_date == today_date:
+                    filtered.append(r)
+            elif period == "yesterday":
+                if r_date and r_date == yesterday_date:
+                    filtered.append(r)
+            else:
+                filtered.append(r)
+
+        # Fallback if filtered is empty (e.g. fresh day or timezone shift)
+        if not filtered and station_records:
+            filtered = station_records[-limit:]
+
+        return filtered[-limit:]
 
 # Singleton instance
 sheets_handler = GoogleSheetHandler()
