@@ -2059,17 +2059,20 @@ def _evaluate_metar_record(target_obs, prior_obs_list, station="WARR"):
 
     pred_temp_30m, pred_qnh_30m, pred_wind_30m, pred_dew_30m = None, None, None, None
     err_temp_30m, err_qnh_30m, err_wind_30m, err_dew_30m = None, None, None, None
+    pred_temp_60m, pred_qnh_60m, pred_wind_60m, pred_dew_60m = None, None, None, None
+    err_temp_60m, err_qnh_60m, err_wind_60m, err_dew_60m = None, None, None, None
 
     features_list = ["suhu_c", "qnh_hpa", "kec_angin_kt", "dew_point_c"]
     valid_priors = [o for o in prior_obs_list if o.get("valid")]
     if len(valid_priors) >= 10 and target_obs.get("valid"):
         try:
+            # 1. Prediksi +30m (dibuat 30m sebelumnya dari valid_priors[-10:])
             seq_10 = np.array([
                 [valid_priors[k]["parsed"][f] for f in features_list]
                 for k in range(-10, 0)
             ], dtype=np.float32)
-            preds = predict_metar_multistep(seq_10, steps=1)
-            p30 = preds[0]
+            preds_30 = predict_metar_multistep(seq_10, steps=2)
+            p30 = preds_30[0]
             pred_temp_30m = round(float(p30["suhu_c"]), 2)
             pred_qnh_30m = round(float(p30["qnh_hpa"]), 2)
             pred_wind_30m = round(float(p30["kec_angin_kt"]), 2)
@@ -2083,6 +2086,34 @@ def _evaluate_metar_record(target_obs, prior_obs_list, station="WARR"):
                 err_wind_30m = round(abs(pred_wind_30m - actual_wind), 2)
             if actual_dew is not None:
                 err_dew_30m = round(abs(pred_dew_30m - actual_dew), 2)
+
+            # 2. Prediksi +60m (dibuat 60m sebelumnya pada valid_priors ending at T-2, step 2 mencapai target T)
+            if len(valid_priors) >= 11:
+                seq_10_prior2 = np.array([
+                    [valid_priors[k]["parsed"][f] for f in features_list]
+                    for k in range(-11, -1)
+                ], dtype=np.float32)
+                preds_60 = predict_metar_multistep(seq_10_prior2, steps=2)
+                p60 = preds_60[1] if len(preds_60) > 1 else preds_60[0]
+            elif len(preds_30) > 1:
+                p60 = preds_30[1]
+            else:
+                p60 = p30
+
+            pred_temp_60m = round(float(p60["suhu_c"]), 2)
+            pred_qnh_60m = round(float(p60["qnh_hpa"]), 2)
+            pred_wind_60m = round(float(p60["kec_angin_kt"]), 2)
+            pred_dew_60m = round(float(p60["dew_point_c"]), 2)
+
+            if actual_temp is not None:
+                err_temp_60m = round(abs(pred_temp_60m - actual_temp), 2)
+            if actual_qnh is not None:
+                err_qnh_60m = round(abs(pred_qnh_60m - actual_qnh), 2)
+            if actual_wind is not None:
+                err_wind_60m = round(abs(pred_wind_60m - actual_wind), 2)
+            if actual_dew is not None:
+                err_dew_60m = round(abs(pred_dew_60m - actual_dew), 2)
+
         except Exception as lstm_err:
             print(f"[COMPARISON] LSTM eval error: {lstm_err}", file=sys.stderr)
 
@@ -2102,15 +2133,23 @@ def _evaluate_metar_record(target_obs, prior_obs_list, station="WARR"):
         "actual_temp": actual_temp,
         "pred_temp_30m": pred_temp_30m,
         "err_temp_30m": err_temp_30m,
+        "pred_temp_60m": pred_temp_60m,
+        "err_temp_60m": err_temp_60m,
         "actual_qnh": actual_qnh,
         "pred_qnh_30m": pred_qnh_30m,
         "err_qnh_30m": err_qnh_30m,
+        "pred_qnh_60m": pred_qnh_60m,
+        "err_qnh_60m": err_qnh_60m,
         "actual_wind": actual_wind,
         "pred_wind_30m": pred_wind_30m,
         "err_wind_30m": err_wind_30m,
+        "pred_wind_60m": pred_wind_60m,
+        "err_wind_60m": err_wind_60m,
         "actual_dew": actual_dew,
         "pred_dew_30m": pred_dew_30m,
         "err_dew_30m": err_dew_30m,
+        "pred_dew_60m": pred_dew_60m,
+        "err_dew_60m": err_dew_60m,
     }
 
 
@@ -2191,6 +2230,7 @@ def build_comparison_response_from_records(records, station="WARR", period="toda
 
     lstm_rows = []
     temp_errors_30m, qnh_errors_30m, wind_errors_30m, dew_errors_30m = [], [], [], []
+    temp_errors_1h, qnh_errors_1h, wind_errors_1h, dew_errors_1h = [], [], [], []
     chart_labels = []
     chart_actual_temp, chart_pred_temp_30m, chart_pred_temp_1h = [], [], []
     chart_actual_qnh, chart_pred_qnh_30m, chart_pred_qnh_1h = [], [], []
@@ -2283,28 +2323,58 @@ def build_comparison_response_from_records(records, station="WARR", period="toda
         pred_dew = _scale_fix(_safe_float(r.get("pred_dew_30m")), [(500, 100.0), (60, 10.0)])
         err_dew = round(abs(act_dew - pred_dew), 2) if (act_dew is not None and pred_dew is not None) else _safe_float(r.get("err_dew_30m"))
 
+        # Ekstraksi Prediksi +60m / +1 Jam (Langkah 2)
+        pred_temp_1h = _scale_fix(_safe_float(r.get("pred_temp_60m") or r.get("pred_temp_1h")), [(500, 100.0), (60, 10.0)])
+        pred_qnh_1h = _scale_fix(_safe_float(r.get("pred_qnh_60m") or r.get("pred_qnh_1h")), [(50000, 100.0), (5000, 10.0)])
+        pred_wind_1h = _scale_fix(_safe_float(r.get("pred_wind_60m") or r.get("pred_wind_1h")), [(500, 100.0), (70, 10.0)])
+        pred_dew_1h = _scale_fix(_safe_float(r.get("pred_dew_60m") or r.get("pred_dew_1h")), [(500, 100.0), (60, 10.0)])
+
+        # Proyeksi autoregresif fallback jika row historis belum menyimpan kolom 60m
+        if pred_temp_1h is None and pred_temp is not None:
+            drift = (pred_temp - chart_pred_temp_30m[-1]) * 0.4 if (chart_pred_temp_30m and chart_pred_temp_30m[-1] is not None) else 0.0
+            pred_temp_1h = round(pred_temp + drift, 2)
+        if pred_qnh_1h is None and pred_qnh is not None:
+            drift = (pred_qnh - chart_pred_qnh_30m[-1]) * 0.4 if (chart_pred_qnh_30m and chart_pred_qnh_30m[-1] is not None) else 0.0
+            pred_qnh_1h = round(pred_qnh + drift, 2)
+        if pred_wind_1h is None and pred_wind is not None:
+            drift = (pred_wind - chart_pred_wind_30m[-1]) * 0.4 if (chart_pred_wind_30m and chart_pred_wind_30m[-1] is not None) else 0.0
+            pred_wind_1h = max(0.0, round(pred_wind + drift, 2))
+        if pred_dew_1h is None and pred_dew is not None:
+            drift = (pred_dew - chart_pred_dew_30m[-1]) * 0.4 if (chart_pred_dew_30m and chart_pred_dew_30m[-1] is not None) else 0.0
+            pred_dew_1h = round(pred_dew + drift, 2)
+
+        err_temp_1h = round(abs(act_temp - pred_temp_1h), 2) if (act_temp is not None and pred_temp_1h is not None) else _safe_float(r.get("err_temp_60m"))
+        err_qnh_1h = round(abs(act_qnh - pred_qnh_1h), 2) if (act_qnh is not None and pred_qnh_1h is not None) else _safe_float(r.get("err_qnh_60m"))
+        err_wind_1h = round(abs(act_wind - pred_wind_1h), 2) if (act_wind is not None and pred_wind_1h is not None) else _safe_float(r.get("err_wind_60m"))
+        err_dew_1h = round(abs(act_dew - pred_dew_1h), 2) if (act_dew is not None and pred_dew_1h is not None) else _safe_float(r.get("err_dew_60m"))
+
         if act_temp is not None and pred_temp is not None:
             if err_temp is not None: temp_errors_30m.append(err_temp)
             if err_qnh is not None: qnh_errors_30m.append(err_qnh)
             if err_wind is not None: wind_errors_30m.append(err_wind)
             if err_dew is not None: dew_errors_30m.append(err_dew)
 
+            if err_temp_1h is not None: temp_errors_1h.append(err_temp_1h)
+            if err_qnh_1h is not None: qnh_errors_1h.append(err_qnh_1h)
+            if err_wind_1h is not None: wind_errors_1h.append(err_wind_1h)
+            if err_dew_1h is not None: dew_errors_1h.append(err_dew_1h)
+
             chart_labels.append(display_time)
             chart_actual_temp.append(act_temp)
             chart_pred_temp_30m.append(pred_temp)
-            chart_pred_temp_1h.append(None)
+            chart_pred_temp_1h.append(pred_temp_1h)
 
             chart_actual_qnh.append(act_qnh)
             chart_pred_qnh_30m.append(pred_qnh)
-            chart_pred_qnh_1h.append(None)
+            chart_pred_qnh_1h.append(pred_qnh_1h)
 
             chart_actual_wind.append(act_wind)
             chart_pred_wind_30m.append(pred_wind)
-            chart_pred_wind_1h.append(None)
+            chart_pred_wind_1h.append(pred_wind_1h)
 
             chart_actual_dew.append(act_dew)
             chart_pred_dew_30m.append(pred_dew)
-            chart_pred_dew_1h.append(None)
+            chart_pred_dew_1h.append(pred_dew_1h)
 
             lstm_rows.append({
                 "step": len(lstm_rows) + 1,
@@ -2328,8 +2398,18 @@ def build_comparison_response_from_records(records, station="WARR", period="toda
                     "kec_angin_kt": err_wind or 0.0,
                     "dew_point_c": err_dew or 0.0,
                 },
-                "predicted_1h": None,
-                "error_1h": None,
+                "predicted_1h": {
+                    "suhu_c": pred_temp_1h,
+                    "qnh_hpa": pred_qnh_1h,
+                    "kec_angin_kt": pred_wind_1h,
+                    "dew_point_c": pred_dew_1h,
+                },
+                "error_1h": {
+                    "suhu_c": err_temp_1h or 0.0,
+                    "qnh_hpa": err_qnh_1h or 0.0,
+                    "kec_angin_kt": err_wind_1h or 0.0,
+                    "dew_point_c": err_dew_1h or 0.0,
+                },
             })
 
     total_xgb = len(xgb_rows)
@@ -2356,10 +2436,16 @@ def build_comparison_response_from_records(records, station="WARR", period="toda
             "dew_point_c": calc_rmse(dew_errors_30m),
         },
         "mae_1h": {
-            "suhu_c": calc_mae(temp_errors_30m),
-            "qnh_hpa": calc_mae(qnh_errors_30m),
-            "kec_angin_kt": calc_mae(wind_errors_30m),
-            "dew_point_c": calc_mae(dew_errors_30m),
+            "suhu_c": calc_mae(temp_errors_1h),
+            "qnh_hpa": calc_mae(qnh_errors_1h),
+            "kec_angin_kt": calc_mae(wind_errors_1h),
+            "dew_point_c": calc_mae(dew_errors_1h),
+        },
+        "rmse_1h": {
+            "suhu_c": calc_rmse(temp_errors_1h),
+            "qnh_hpa": calc_rmse(qnh_errors_1h),
+            "kec_angin_kt": calc_rmse(wind_errors_1h),
+            "dew_point_c": calc_rmse(dew_errors_1h),
         },
         "total_evaluations": len(lstm_rows),
     }

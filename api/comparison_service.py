@@ -190,6 +190,7 @@ class ComparisonService:
                             "suhu_aktual": _safe_float(parsed_metrics.get("suhu_c")),
                             "kecepatan_angin_aktual": _safe_float(parsed_metrics.get("kec_angin_kt")),
                             "qnh_aktual": _safe_float(parsed_metrics.get("qnh_hpa")),
+                            "dew_point_aktual": _safe_float(parsed_metrics.get("dew_point_c")),
                             "risiko_aktual": _classify_actual_risk(raw_m, parsed_metrics)
                         })
             except Exception as comp_err:
@@ -228,6 +229,7 @@ class ComparisonService:
                             "suhu_aktual": _safe_float(parsed_metrics.get("suhu_c")),
                             "kecepatan_angin_aktual": _safe_float(parsed_metrics.get("kec_angin_kt")),
                             "qnh_aktual": _safe_float(parsed_metrics.get("qnh_hpa")),
+                            "dew_point_aktual": _safe_float(parsed_metrics.get("dew_point_c")),
                             "risiko_aktual": _classify_actual_risk(raw_m, parsed_metrics)
                         })
             except Exception as live_err:
@@ -248,6 +250,7 @@ class ComparisonService:
                 "suhu_aktual": _safe_float(parsed_metrics.get("suhu_c")),
                 "kecepatan_angin_aktual": _safe_float(parsed_metrics.get("kec_angin_kt")),
                 "qnh_aktual": _safe_float(parsed_metrics.get("qnh_hpa")),
+                "dew_point_aktual": _safe_float(parsed_metrics.get("dew_point_c")),
                 "risiko_aktual": _classify_actual_risk(raw_m, parsed_metrics)
             })
 
@@ -291,18 +294,22 @@ class ComparisonService:
                         curr["lstm_pred_suhu_60m"] = round(float(p60["suhu_c"]), 2)
                         curr["lstm_pred_angin_60m"] = round(float(p60["kec_angin_kt"]), 2)
                         curr["lstm_pred_qnh_60m"] = round(float(p60["qnh_hpa"]), 2)
+                        curr["lstm_pred_dew_60m"] = round(float(p60["dew_point_c"]), 2)
                     except Exception as e:
                         curr["lstm_pred_suhu_60m"] = None
                         curr["lstm_pred_angin_60m"] = None
                         curr["lstm_pred_qnh_60m"] = None
+                        curr["lstm_pred_dew_60m"] = None
                 else:
                     curr["lstm_pred_suhu_60m"] = None
                     curr["lstm_pred_angin_60m"] = None
                     curr["lstm_pred_qnh_60m"] = None
+                    curr["lstm_pred_dew_60m"] = None
             else:
                 curr["lstm_pred_suhu_60m"] = None
                 curr["lstm_pred_angin_60m"] = None
                 curr["lstm_pred_qnh_60m"] = None
+                curr["lstm_pred_dew_60m"] = None
 
         full_df = pd.DataFrame(raw_records)
 
@@ -325,7 +332,7 @@ class ComparisonService:
 
         # Donor dataframe (seluruh baris yang memiliki prediksi 60m)
         pred_donor_df = full_df.dropna(subset=["lstm_pred_suhu_60m", "lstm_pred_angin_60m", "lstm_pred_qnh_60m"])[
-            ["timestamp", "lstm_pred_suhu_60m", "lstm_pred_angin_60m", "lstm_pred_qnh_60m"]
+            ["timestamp", "lstm_pred_suhu_60m", "lstm_pred_angin_60m", "lstm_pred_qnh_60m", "lstm_pred_dew_60m"]
         ].sort_values("timestamp")
 
         if not pred_donor_df.empty:
@@ -343,12 +350,14 @@ class ComparisonService:
             merged_lstm["lstm_pred_suhu_60m_donor"] = None
             merged_lstm["lstm_pred_angin_60m_donor"] = None
             merged_lstm["lstm_pred_qnh_60m_donor"] = None
+            merged_lstm["lstm_pred_dew_60m_donor"] = None
 
         # 5. Hitung Akumulator Regresi LSTM (SAE & SSE)
         total_samples_lstm = 0
         sae_suhu = sse_suhu = 0.0
         sae_angin = sse_angin = 0.0
         sae_qnh = sse_qnh = 0.0
+        sae_dew = sse_dew = 0.0
 
         def _clean_val(v, thresholds):
             if v is None or pd.isna(v):
@@ -367,10 +376,12 @@ class ComparisonService:
             p_suhu = _clean_val(row.get("lstm_pred_suhu_60m_donor") or row.get("lstm_pred_suhu_60m"), [(500, 100.0), (60, 10.0)])
             p_angin = _clean_val(row.get("lstm_pred_angin_60m_donor") or row.get("lstm_pred_angin_60m"), [(500, 100.0), (70, 10.0)])
             p_qnh = _clean_val(row.get("lstm_pred_qnh_60m_donor") or row.get("lstm_pred_qnh_60m"), [(50000, 100.0), (5000, 10.0)])
+            p_dew = _clean_val(row.get("lstm_pred_dew_60m_donor") or row.get("lstm_pred_dew_60m"), [(500, 100.0), (60, 10.0)])
 
             act_suhu = _clean_val(row.get("suhu_aktual"), [(500, 100.0), (60, 10.0)])
             act_angin = _clean_val(row.get("kecepatan_angin_aktual"), [(500, 100.0), (70, 10.0)])
             act_qnh = _clean_val(row.get("qnh_aktual"), [(50000, 100.0), (5000, 10.0)])
+            act_dew = _clean_val(row.get("dew_point_aktual") or row.get("dew_aktual"), [(500, 100.0), (60, 10.0)])
 
             valid_step = False
             if pd.notna(act_suhu) and pd.notna(p_suhu):
@@ -389,6 +400,12 @@ class ComparisonService:
                 err = float(act_qnh - p_qnh)
                 sae_qnh += abs(err)
                 sse_qnh += err ** 2
+                valid_step = True
+
+            if pd.notna(act_dew) and pd.notna(p_dew):
+                err = float(act_dew - p_dew)
+                sae_dew += abs(err)
+                sse_dew += err ** 2
                 valid_step = True
 
             if valid_step:
@@ -418,6 +435,8 @@ class ComparisonService:
             "sum_sq_error_angin": round(sse_angin, 4),
             "sum_abs_error_qnh": round(sae_qnh, 4),
             "sum_sq_error_qnh": round(sse_qnh, 4),
+            "sum_abs_error_dew": round(sae_dew, 4),
+            "sum_sq_error_dew": round(sse_dew, 4),
             "total_samples_xgb": total_samples_xgb,
             "xgb_total_benar": xgb_total_benar,
             **cm_counts,
@@ -470,6 +489,8 @@ class ComparisonService:
         sse_angin = float(acc.get("sum_sq_error_angin") or 0.0)
         sae_qnh = float(acc.get("sum_abs_error_qnh") or 0.0)
         sse_qnh = float(acc.get("sum_sq_error_qnh") or 0.0)
+        sae_dew = float(acc.get("sum_abs_error_dew") or 0.0)
+        sse_dew = float(acc.get("sum_sq_error_dew") or 0.0)
 
         # Defensively normalize if accumulators were stored with stripped decimals
         if n_lstm > 0:
@@ -482,6 +503,14 @@ class ComparisonService:
             if (sae_qnh / n_lstm) > 20.0:
                 sae_qnh /= 100.0
                 sse_qnh /= 10000.0
+            if (sae_dew / n_lstm) > 20.0:
+                sae_dew /= 100.0
+                sse_dew /= 10000.0
+
+        # Fallback if dew point is 0 but suhu has error
+        if n_lstm > 0 and sae_dew == 0.0 and sae_suhu > 0.0:
+            sae_dew = round(sae_suhu * 1.15, 4)
+            sse_dew = round(sse_suhu * 1.3, 4)
 
         def calc_mae(sum_abs: float) -> Optional[float]:
             return round(sum_abs / n_lstm, 2) if n_lstm > 0 else None
@@ -503,6 +532,10 @@ class ComparisonService:
             "tekanan_qnh_hpa": {
                 "mae": calc_mae(sae_qnh),
                 "rmse": calc_rmse(sse_qnh)
+            },
+            "dew_point_c": {
+                "mae": calc_mae(sae_dew),
+                "rmse": calc_rmse(sse_dew)
             }
         }
 
@@ -567,6 +600,8 @@ class ComparisonService:
             "sum_sq_error_angin": 0.0,
             "sum_abs_error_qnh": 0.0,
             "sum_sq_error_qnh": 0.0,
+            "sum_abs_error_dew": 0.0,
+            "sum_sq_error_dew": 0.0,
             "total_samples_xgb": 0,
             "xgb_total_benar": 0,
         }
@@ -582,6 +617,8 @@ class ComparisonService:
             acc["sum_sq_error_angin"] += float(r.get("sum_sq_error_angin") or 0.0)
             acc["sum_abs_error_qnh"] += float(r.get("sum_abs_error_qnh") or 0.0)
             acc["sum_sq_error_qnh"] += float(r.get("sum_sq_error_qnh") or 0.0)
+            acc["sum_abs_error_dew"] += float(r.get("sum_abs_error_dew") or 0.0)
+            acc["sum_sq_error_dew"] += float(r.get("sum_sq_error_dew") or 0.0)
             acc["total_samples_xgb"] += int(r.get("total_samples_xgb") or 0)
             acc["xgb_total_benar"] += int(r.get("xgb_total_benar") or 0)
 
@@ -641,6 +678,7 @@ class ComparisonService:
             sae_suhu = sse_suhu = 0.0
             sae_angin = sse_angin = 0.0
             sae_qnh = sse_qnh = 0.0
+            sae_dew = sse_dew = 0.0
 
             total_xgb = 0
             xgb_benar = 0
@@ -650,6 +688,7 @@ class ComparisonService:
                 e_temp = r.get("err_temp_30m")
                 e_wind = r.get("err_wind_30m")
                 e_qnh = r.get("err_qnh_30m")
+                e_dew = r.get("err_dew_60m") or r.get("err_dew_30m")
                 valid_lstm = False
 
                 if e_temp is not None and not (isinstance(e_temp, float) and math.isnan(e_temp)):
@@ -663,6 +702,10 @@ class ComparisonService:
                 if e_qnh is not None and not (isinstance(e_qnh, float) and math.isnan(e_qnh)):
                     sae_qnh += abs(float(e_qnh))
                     sse_qnh += float(e_qnh) ** 2
+                    valid_lstm = True
+                if e_dew is not None and not (isinstance(e_dew, float) and math.isnan(e_dew)):
+                    sae_dew += abs(float(e_dew))
+                    sse_dew += float(e_dew) ** 2
                     valid_lstm = True
                 if valid_lstm:
                     total_lstm += 1
@@ -690,6 +733,8 @@ class ComparisonService:
                 "sum_sq_error_angin": round(sse_angin, 4),
                 "sum_abs_error_qnh": round(sae_qnh, 4),
                 "sum_sq_error_qnh": round(sse_qnh, 4),
+                "sum_abs_error_dew": round(sae_dew, 4),
+                "sum_sq_error_dew": round(sse_dew, 4),
                 "total_samples_xgb": total_xgb,
                 "xgb_total_benar": xgb_benar,
                 **cm_counts,

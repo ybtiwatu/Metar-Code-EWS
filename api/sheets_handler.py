@@ -864,7 +864,7 @@ class GoogleSheetHandler:
         cleaned = dict(r)
         n_lstm = int(cleaned.get("total_samples_lstm") or 0)
         if n_lstm > 0:
-            for feat, th in [("suhu", 20.0), ("angin", 20.0), ("qnh", 20.0)]:
+            for feat, th in [("suhu", 20.0), ("angin", 20.0), ("qnh", 20.0), ("dew", 20.0)]:
                 sae_key = f"sum_abs_error_{feat}"
                 sse_key = f"sum_sq_error_{feat}"
                 sae = cleaned.get(sae_key)
@@ -913,6 +913,7 @@ class GoogleSheetHandler:
                     "sum_abs_error_suhu", "sum_sq_error_suhu",
                     "sum_abs_error_angin", "sum_sq_error_angin",
                     "sum_abs_error_qnh", "sum_sq_error_qnh",
+                    "sum_abs_error_dew", "sum_sq_error_dew",
                     "total_samples_xgb", "xgb_total_benar",
                     "cm_low_low", "cm_low_med", "cm_low_high",
                     "cm_med_low", "cm_med_med", "cm_med_high",
@@ -981,6 +982,8 @@ class GoogleSheetHandler:
                 self._as_float(record.get("sum_sq_error_angin")) or 0.0,
                 self._as_float(record.get("sum_abs_error_qnh")) or 0.0,
                 self._as_float(record.get("sum_sq_error_qnh")) or 0.0,
+                self._as_float(record.get("sum_abs_error_dew")) or 0.0,
+                self._as_float(record.get("sum_sq_error_dew")) or 0.0,
                 int(record.get("total_samples_xgb") or 0),
                 int(record.get("xgb_total_benar") or 0),
                 int(record.get("cm_low_low") or 0),
@@ -997,7 +1000,7 @@ class GoogleSheetHandler:
 
             if row_idx_to_update:
                 # Update existing row
-                cell_range = f"A{row_idx_to_update}:U{row_idx_to_update}"
+                cell_range = f"A{row_idx_to_update}:W{row_idx_to_update}"
                 worksheet.update(cell_range, [row_values], value_input_option="RAW")
                 print(f"[SHEETS] Updated existing row {row_idx_to_update} in 'RingkasanEvaluasiHarian' for {station} {tanggal}", file=sys.stderr)
             else:

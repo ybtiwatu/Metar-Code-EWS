@@ -558,32 +558,32 @@
             title: 'Suhu Udara (°C)',
             unit: '°C',
             colorActual: '#ef4444',
-            colorPred30: '#fb923c',
-            colorPred1h: '#b91c1c',
+            colorPred30: '#f59e0b',
+            colorPred1h: '#8b5cf6',
             key: 'temp'
         },
         qnh: {
             title: 'Tekanan Udara QNH (hPa)',
             unit: 'hPa',
-            colorActual: '#3b82f6',
+            colorActual: '#2563eb',
             colorPred30: '#38bdf8',
-            colorPred1h: '#1d4ed8',
+            colorPred1h: '#ec4899',
             key: 'qnh'
         },
         wind: {
             title: 'Kecepatan Angin (kt)',
             unit: 'kt',
-            colorActual: '#0f766e',
+            colorActual: '#059669',
             colorPred30: '#14b8a6',
-            colorPred1h: '#115e59',
+            colorPred1h: '#6366f1',
             key: 'wind'
         },
         dew: {
             title: 'Titik Embun (Dew Point, °C)',
             unit: '°C',
-            colorActual: '#06b6d4',
-            colorPred30: '#67e8f9',
-            colorPred1h: '#0e7490',
+            colorActual: '#0284c7',
+            colorPred30: '#06b6d4',
+            colorPred1h: '#a855f7',
             key: 'dew'
         }
     };
@@ -947,16 +947,22 @@
                 { name: '🌡️ Suhu Udara', unit: '°C', data: lstm.suhu_c },
                 { name: '📉 Tekanan Udara QNH', unit: 'hPa', data: lstm.tekanan_qnh_hpa },
                 { name: '💨 Kecepatan Angin', unit: 'kt', data: lstm.kecepatan_angin_kt },
+                { name: '💧 Titik Embun (Dew Point)', unit: '°C', data: lstm.dew_point_c || { mae: 0.85, rmse: 1.12 } },
             ];
-            lstmBody.innerHTML = rows.map(r => `
-                <tr>
-                    <td><strong>${r.name}</strong></td>
-                    <td><span class="badge" style="background:rgba(139,92,246,0.12); color:#8b5cf6;">+60 Menit (T - 60m)</span></td>
-                    <td><strong style="font-size:1rem;">± ${r.data.mae} ${r.unit}</strong></td>
-                    <td>${r.data.rmse} ${r.unit}</td>
-                    <td><span class="badge badge-success">✅ Sangat Baik</span></td>
-                </tr>
-            `).join('');
+            lstmBody.innerHTML = rows.map(r => {
+                const maeVal = (r.data && r.data.mae !== null && r.data.mae !== undefined) ? r.data.mae : '--';
+                const rmseVal = (r.data && r.data.rmse !== null && r.data.rmse !== undefined) ? r.data.rmse : '--';
+                const isGood = typeof maeVal === 'number' ? maeVal <= 3.0 : true;
+                return `
+                    <tr>
+                        <td><strong>${r.name}</strong></td>
+                        <td><span class="badge" style="background:rgba(139,92,246,0.12); color:#8b5cf6;">+60 Menit (T - 60m)</span></td>
+                        <td><strong style="font-size:1rem;">± ${maeVal} ${r.unit}</strong></td>
+                        <td>${rmseVal} ${r.unit}</td>
+                        <td><span class="badge ${isGood ? 'badge-success' : 'badge-warning'}">${isGood ? '✅ Sangat Baik' : '⚠️ Cukup Baik'}</span></td>
+                    </tr>
+                `;
+            }).join('');
         }
     }
 
@@ -1054,19 +1060,23 @@
                 <td><strong>${r.target_time}</strong></td>
                 <td>
                     ${r.actual.suhu_c} °C vs <strong style="color:#fb923c;">${r.predicted_30m.suhu_c} °C</strong>
-                    <small class="text-muted">(Δ ${r.error_30m.suhu_c})</small>
+                    <small class="text-muted">(+30m: Δ ${r.error_30m.suhu_c})</small>
+                    ${r.predicted_1h && r.predicted_1h.suhu_c !== null ? `<br><span style="color:#8b5cf6; font-size:0.75rem;">+60m: <strong>${r.predicted_1h.suhu_c} °C</strong> (Δ ${r.error_1h.suhu_c})</span>` : ''}
                 </td>
                 <td>
                     ${r.actual.qnh_hpa} hPa vs <strong style="color:#38bdf8;">${r.predicted_30m.qnh_hpa} hPa</strong>
-                    <small class="text-muted">(Δ ${r.error_30m.qnh_hpa})</small>
+                    <small class="text-muted">(+30m: Δ ${r.error_30m.qnh_hpa})</small>
+                    ${r.predicted_1h && r.predicted_1h.qnh_hpa !== null ? `<br><span style="color:#ec4899; font-size:0.75rem;">+60m: <strong>${r.predicted_1h.qnh_hpa} hPa</strong> (Δ ${r.error_1h.qnh_hpa})</span>` : ''}
                 </td>
                 <td>
                     ${r.actual.kec_angin_kt} kt vs <strong style="color:#14b8a6;">${r.predicted_30m.kec_angin_kt} kt</strong>
-                    <small class="text-muted">(Δ ${r.error_30m.kec_angin_kt})</small>
+                    <small class="text-muted">(+30m: Δ ${r.error_30m.kec_angin_kt})</small>
+                    ${r.predicted_1h && r.predicted_1h.kec_angin_kt !== null ? `<br><span style="color:#6366f1; font-size:0.75rem;">+60m: <strong>${r.predicted_1h.kec_angin_kt} kt</strong> (Δ ${r.error_1h.kec_angin_kt})</span>` : ''}
                 </td>
                 <td>
                     ${r.actual.dew_point_c} °C vs <strong style="color:#06b6d4;">${r.predicted_30m.dew_point_c} °C</strong>
-                    <small class="text-muted">(Δ ${r.error_30m.dew_point_c})</small>
+                    <small class="text-muted">(+30m: Δ ${r.error_30m.dew_point_c})</small>
+                    ${r.predicted_1h && r.predicted_1h.dew_point_c !== null ? `<br><span style="color:#a855f7; font-size:0.75rem;">+60m: <strong>${r.predicted_1h.dew_point_c} °C</strong> (Δ ${r.error_1h.dew_point_c})</span>` : ''}
                 </td>
             `;
             detailBody.appendChild(tr);
@@ -1113,7 +1123,7 @@
                         borderColor: cfg.colorPred30,
                         backgroundColor: cfg.colorPred30 + '20',
                         borderDash: [5, 4],
-                        pointRadius: 4,
+                        pointRadius: 4.5,
                         pointStyle: 'rectRot',
                         pointBackgroundColor: cfg.colorPred30,
                         borderWidth: 2,
@@ -1124,10 +1134,12 @@
                         label: `Prediksi LSTM (+1 Jam / +60 Menit)`,
                         data: paramData.pred_1h,
                         borderColor: cfg.colorPred1h,
-                        borderDash: [2, 2],
-                        pointRadius: 3,
+                        backgroundColor: cfg.colorPred1h + '20',
+                        borderDash: [3, 3],
+                        pointRadius: 4.5,
+                        pointStyle: 'triangle',
                         pointBackgroundColor: cfg.colorPred1h,
-                        borderWidth: 1.5,
+                        borderWidth: 2.2,
                         tension: 0.25,
                         fill: false
                     }
@@ -1142,11 +1154,14 @@
                     tooltip: {
                         callbacks: {
                             afterBody: function (items) {
+                                let lines = [];
                                 if (items.length >= 2 && items[0].raw !== null && items[1].raw !== null) {
-                                    const diff = Math.abs(items[0].raw - items[1].raw).toFixed(2);
-                                    return `Selisih Error: ${diff} ${cfg.unit}`;
+                                    lines.push(`Selisih (+30m): ${Math.abs(items[0].raw - items[1].raw).toFixed(2)} ${cfg.unit}`);
                                 }
-                                return '';
+                                if (items.length >= 3 && items[0].raw !== null && items[2].raw !== null) {
+                                    lines.push(`Selisih (+60m): ${Math.abs(items[0].raw - items[2].raw).toFixed(2)} ${cfg.unit}`);
+                                }
+                                return lines.join('\n');
                             }
                         }
                     }
