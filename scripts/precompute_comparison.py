@@ -19,6 +19,14 @@ import os
 import argparse
 from datetime import date, datetime, timedelta
 
+# Fix Windows terminal UTF-8 encoding for emojis
+if sys.platform.startswith("win"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 # Tambahkan root path proyek ke sys.path
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BASE_DIR not in sys.path:
