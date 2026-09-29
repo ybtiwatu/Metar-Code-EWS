@@ -1,0 +1,711 @@
+{% extends "layout.html" %}
+
+{% block title %}Alat Forecast Multi-Step (LSTM) — METAR Auto Dashboard{% endblock %}
+
+{% block header_station_text %}
+<span class="station-dot" style="background:#06b6d4"></span>
+<span class="station-name">Alat Uji & Forecast LSTM</span>
+{% endblock %}
+
+{% block nav_active_lstm %}active{% endblock %}
+
+{% block content %}
+<div class="tool-page-container fade-in">
+    <!-- Header Page -->
+    <div class="tool-header-card card mb-md">
+        <div class="tool-header-content">
+            <div class="tool-header-icon-box" style="background: rgba(6, 182, 212, 0.15); color: #0891b2;">
+                🧠
+            </div>
+            <div>
+                <h2 class="tool-title">Alat Forecast Multi-Step (LSTM)</h2>
+                <p class="tool-subtitle">
+                    Model Deep Learning <strong>Long Short-Term Memory (LSTM)</strong> untuk peramalan cuaca multi-langkah (+30 menit dan +1 jam) berbasis runtutan 10 observasi METAR berurutan.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Guide / Cara Kerja Card -->
+    <div class="card mb-md tool-guide-box">
+        <div class="tool-guide-header" onclick="toggleGuide()">
+            <div class="flex items-center gap-sm">
+                <span class="tool-badge-info" style="background: rgba(6, 182, 212, 0.15); color: #0891b2;">ℹ️ Cara Kerja Model</span>
+                <span style="font-weight: 600; font-size: 0.95rem;">Syarat Input: Tepat 10 Kode METAR Berurutan Waktu (T-9 sampai T terkini)</span>
+            </div>
+            <span class="guide-toggle-icon" id="guideToggleIcon">▲</span>
+        </div>
+        <div class="tool-guide-body" id="guideBody">
+            <p style="margin-top: 8px; color: var(--text-secondary); font-size: 0.9rem; line-height: 1.5;">
+                Model recurrent neural network LSTM memerlukan jendela waktu (<em>time-series sequence window</em>) sebanyak <strong>10 observasi berturut-turut</strong> (~5 jam riwayat dengan interval 30 menit).
+                Model mengekstrak 4 parameter inti: <strong>Suhu (°C)</strong>, <strong>Tekanan QNH (hPa)</strong>, <strong>Kecepatan Angin (kt)</strong>, dan <strong>Titik Embun (°C)</strong>, lalu melakukan proyeksi autoregresif ke masa depan untuk <strong>+30 menit</strong> dan <strong>+1 jam</strong> ke depan.
+            </p>
+            <div class="lstm-sequence-indicator" style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 12px;">
+                <span class="badge" style="background: var(--bg-surface-alt); border: 1px solid var(--border-color);">T-9</span>
+                <span class="badge" style="background: var(--bg-surface-alt); border: 1px solid var(--border-color);">T-8</span>
+                <span class="badge" style="background: var(--bg-surface-alt); border: 1px solid var(--border-color);">T-7</span>
+                <span class="badge" style="background: var(--bg-surface-alt); border: 1px solid var(--border-color);">T-6</span>
+                <span class="badge" style="background: var(--bg-surface-alt); border: 1px solid var(--border-color);">T-5</span>
+                <span class="badge" style="background: var(--bg-surface-alt); border: 1px solid var(--border-color);">T-4</span>
+                <span class="badge" style="background: var(--bg-surface-alt); border: 1px solid var(--border-color);">T-3</span>
+                <span class="badge" style="background: var(--bg-surface-alt); border: 1px solid var(--border-color);">T-2</span>
+                <span class="badge" style="background: var(--bg-surface-alt); border: 1px solid var(--border-color);">T-1</span>
+                <span class="badge badge-primary">T (Terkini)</span>
+                <span style="display: flex; align-items: center; color: var(--color-primary); font-weight: bold; margin: 0 4px;">➔</span>
+                <span class="badge" style="background: #fb923c; color: white; font-weight: bold;">+30 Menit</span>
+                <span class="badge" style="background: #ea580c; color: white; font-weight: bold;">+1 Jam</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Input Form Card -->
+    <div class="card mb-md">
+        <div class="card-header" style="flex-wrap: wrap; gap: 10px;">
+            <div class="flex items-center gap-sm">
+                <h3 class="card-title"><span class="icon">📝</span> Masukkan Runtutan 10 Kode METAR</h3>
+                <span class="tool-counter-badge" id="lstmLinesBadge">0 / 10 baris valid</span>
+            </div>
+        </div>
+
+        <!-- Quick Preset & Generator Bar -->
+        <div class="tool-preset-toolbar">
+            <span class="toolbar-label">Coba Data Contoh:</span>
+            <button type="button" class="btn btn-sm btn-outline tool-preset-btn" onclick="loadLstmPreset('lstm_sample')">
+                💡 Contoh 10 METAR Normal
+            </button>
+            <button type="button" class="btn btn-sm btn-outline tool-preset-btn" onclick="loadLstmPreset('lstm_extreme')">
+                ⛈️ Contoh Transisi Badai
+            </button>
+            <button type="button" class="btn btn-sm btn-outline tool-preset-btn" onclick="fetchLiveLstmMetars()">
+                📡 Tarik 10 METAR Terkini (Live NOAA)
+            </button>
+            <button type="button" class="btn btn-sm btn-outline tool-preset-btn" onclick="generateSimulatedLstm()">
+                🎲 Generate 10 METAR Acak
+            </button>
+            <button type="button" class="btn btn-sm btn-ghost tool-preset-btn" onclick="clearLstmInputs()" title="Kosongkan formulir">
+                🗑️ Bersihkan
+            </button>
+        </div>
+
+        <form id="lstmPredictForm" onsubmit="handleLstmSubmit(event)">
+            <div class="form-group mb-sm">
+                <label for="lstmMetarTextarea" class="flex justify-between items-center">
+                    <span>Paste 10 baris kode METAR berurutan waktu (1 baris per observasi, urutan dari terlama T-9 ke terbaru T):</span>
+                    <small class="text-muted">Urutan kronologis (terlama di atas, terbaru di bawah)</small>
+                </label>
+                <textarea id="lstmMetarTextarea" class="form-input tool-textarea" rows="11"
+                    placeholder="Contoh:
+METAR WARR 290530Z 10013KT CAVOK 32/25 Q1012 NOSIG
+METAR WARR 290600Z 11015KT CAVOK 32/25 Q1012 NOSIG
+METAR WARR 290630Z 13014KT CAVOK 33/24 Q1012 NOSIG
+METAR WARR 290700Z 12014KT CAVOK 33/24 Q1011 NOSIG
+METAR WARR 290730Z 12013KT CAVOK 33/24 Q1011 NOSIG
+METAR WARR 290800Z 11013KT CAVOK 31/23 Q1011 NOSIG
+METAR WARR 290830Z 12015KT 9999 FEW020 31/24 Q1011 NOSIG
+METAR WARR 290900Z 11014KT 9999 FEW020 31/24 Q1011 NOSIG
+METAR WARR 290930Z 12014KT 9999 FEW020 30/24 Q1011 NOSIG
+METAR WARR 291000Z 11013KT 9999 FEW020 29/23 Q1012 NOSIG"
+                    oninput="onLstmTextareaChanged()"></textarea>
+            </div>
+
+            <!-- Error Notification Box -->
+            <div id="lstmErrorBox" class="alert-box alert-error hidden">
+                <span class="icon">⚠️</span>
+                <span id="lstmErrorText">Terjadi kesalahan pada data input.</span>
+            </div>
+
+            <!-- Submit Button Bar -->
+            <div class="tool-action-bar">
+                <button type="submit" class="btn btn-primary btn-lg" id="lstmSubmitBtn">
+                    <span class="btn-icon">🧠</span>
+                    <span id="lstmBtnText">Jalankan Prediksi LSTM</span>
+                </button>
+                <span class="text-muted" style="font-size: 0.85rem;" id="lstmStatusHint">Siap memproses 10 kode METAR</span>
+            </div>
+        </form>
+    </div>
+
+    <!-- ============================================
+         RESULTS SECTION
+         ============================================ -->
+    <div id="lstmResultsSection" class="hidden">
+        <!-- Metric Summary Cards Grid -->
+        <div class="grid grid-cols-1 gap-md sm:grid-cols-2 lg:grid-cols-4 mb-md">
+            <!-- Suhu Card -->
+            <div class="card tool-metric-card" style="border-top: 4px solid #ef4444;">
+                <div class="tool-metric-header">
+                    <span class="tool-metric-label">🌡️ Suhu Udara</span>
+                    <span class="tool-metric-unit">°C</span>
+                </div>
+                <div class="tool-metric-value-row">
+                    <div>
+                        <small>Aktual (T)</small>
+                        <h4 id="cardTempActual">--</h4>
+                    </div>
+                    <span class="tool-arrow">➔</span>
+                    <div>
+                        <small>+30m</small>
+                        <h4 id="cardTemp30m" style="color: #fb923c;">--</h4>
+                    </div>
+                    <span class="tool-arrow">➔</span>
+                    <div>
+                        <small>+1 Jam</small>
+                        <h4 id="cardTemp1h" style="color: #ea580c;">--</h4>
+                    </div>
+                </div>
+                <div class="tool-metric-delta" id="deltaTempBadge">Δ --</div>
+            </div>
+
+            <!-- QNH Card -->
+            <div class="card tool-metric-card" style="border-top: 4px solid #3b82f6;">
+                <div class="tool-metric-header">
+                    <span class="tool-metric-label">📉 Tekanan QNH</span>
+                    <span class="tool-metric-unit">hPa</span>
+                </div>
+                <div class="tool-metric-value-row">
+                    <div>
+                        <small>Aktual (T)</small>
+                        <h4 id="cardQnhActual">--</h4>
+                    </div>
+                    <span class="tool-arrow">➔</span>
+                    <div>
+                        <small>+30m</small>
+                        <h4 id="cardQnh30m" style="color: #fb923c;">--</h4>
+                    </div>
+                    <span class="tool-arrow">➔</span>
+                    <div>
+                        <small>+1 Jam</small>
+                        <h4 id="cardQnh1h" style="color: #ea580c;">--</h4>
+                    </div>
+                </div>
+                <div class="tool-metric-delta" id="deltaQnhBadge">Δ --</div>
+            </div>
+
+            <!-- Wind Speed Card -->
+            <div class="card tool-metric-card" style="border-top: 4px solid #0f766e;">
+                <div class="tool-metric-header">
+                    <span class="tool-metric-label">💨 Kecepatan Angin</span>
+                    <span class="tool-metric-unit">kt</span>
+                </div>
+                <div class="tool-metric-value-row">
+                    <div>
+                        <small>Aktual (T)</small>
+                        <h4 id="cardWindActual">--</h4>
+                    </div>
+                    <span class="tool-arrow">➔</span>
+                    <div>
+                        <small>+30m</small>
+                        <h4 id="cardWind30m" style="color: #fb923c;">--</h4>
+                    </div>
+                    <span class="tool-arrow">➔</span>
+                    <div>
+                        <small>+1 Jam</small>
+                        <h4 id="cardWind1h" style="color: #ea580c;">--</h4>
+                    </div>
+                </div>
+                <div class="tool-metric-delta" id="deltaWindBadge">Δ --</div>
+            </div>
+
+            <!-- Dewpoint Card -->
+            <div class="card tool-metric-card" style="border-top: 4px solid #06b6d4;">
+                <div class="tool-metric-header">
+                    <span class="tool-metric-label">💧 Titik Embun</span>
+                    <span class="tool-metric-unit">°C</span>
+                </div>
+                <div class="tool-metric-value-row">
+                    <div>
+                        <small>Aktual (T)</small>
+                        <h4 id="cardDewActual">--</h4>
+                    </div>
+                    <span class="tool-arrow">➔</span>
+                    <div>
+                        <small>+30m</small>
+                        <h4 id="cardDew30m" style="color: #fb923c;">--</h4>
+                    </div>
+                    <span class="tool-arrow">➔</span>
+                    <div>
+                        <small>+1 Jam</small>
+                        <h4 id="cardDew1h" style="color: #ea580c;">--</h4>
+                    </div>
+                </div>
+                <div class="tool-metric-delta" id="deltaDewBadge">Δ --</div>
+            </div>
+        </div>
+
+        <!-- Tabel Perbandingan Lengkap -->
+        <div class="card mb-md">
+            <div class="card-header">
+                <div>
+                    <h3 class="card-title"><span class="icon">📊</span> Ringkasan Prediksi Multi-Step LSTM</h3>
+                    <p class="ews-card-subtitle" id="lstmTimeMeta">Observasi Terkini: --</p>
+                </div>
+            </div>
+            <div class="table-responsive">
+                <table class="data-table modern-table lstm-metrics-table">
+                    <thead>
+                        <tr>
+                            <th>Parameter Cuaca</th>
+                            <th>Nilai Aktual (Terkini)</th>
+                            <th>Prediksi +30 Menit</th>
+                            <th>Prediksi +1 Jam</th>
+                            <th>Perubahan Netto (+1 Jam)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="lstmMiniMetricsTableBody">
+                        <!-- Populated dynamically -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 4 Visualisasi Time Series (Chart.js) -->
+        <div class="grid grid-cols-1 gap-md md:grid-cols-2 mb-md">
+            <!-- Suhu Chart -->
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title"><span class="icon">🌡️</span> Suhu Udara (°C)</h3>
+                </div>
+                <div style="height: 240px; padding: 10px; position: relative;">
+                    <canvas id="chartLstmTemp"></canvas>
+                </div>
+            </div>
+
+            <!-- QNH Chart -->
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title"><span class="icon">📉</span> Tekanan QNH (hPa)</h3>
+                </div>
+                <div style="height: 240px; padding: 10px; position: relative;">
+                    <canvas id="chartLstmQnh"></canvas>
+                </div>
+            </div>
+
+            <!-- Wind Chart -->
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title"><span class="icon">💨</span> Kecepatan Angin (kt)</h3>
+                </div>
+                <div style="height: 240px; padding: 10px; position: relative;">
+                    <canvas id="chartLstmWind"></canvas>
+                </div>
+            </div>
+
+            <!-- Dew Point Chart -->
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title"><span class="icon">💧</span> Titik Embun / Dew Point (°C)</h3>
+                </div>
+                <div style="height: 240px; padding: 10px; position: relative;">
+                    <canvas id="chartLstmDew"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabel 10 Observasi Input -->
+        <div class="card mb-md">
+            <div class="card-header">
+                <h3 class="card-title"><span class="icon">📋</span> Detail 10 Observasi Input Terurai</h3>
+            </div>
+            <div class="table-responsive">
+                <table class="data-table modern-table" style="font-size: 0.88rem;">
+                    <thead>
+                        <tr>
+                            <th>Urutan Waktu</th>
+                            <th>Kode METAR</th>
+                            <th>Suhu (°C)</th>
+                            <th>QNH (hPa)</th>
+                            <th>Kecepatan Angin (kt)</th>
+                            <th>Titik Embun (°C)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="lstmMiniInputTableBody">
+                        <!-- Populated dynamically -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Raw JSON Collapsible -->
+        <div class="card mb-md">
+            <div class="card-header" style="cursor: pointer;" onclick="toggleRawJsonLstm()">
+                <div class="flex items-center gap-sm">
+                    <span class="icon">🔧</span>
+                    <h3 class="card-title">Respons Teknis (JSON Raw Data)</h3>
+                </div>
+                <span id="rawJsonLstmToggleIcon">▼</span>
+            </div>
+            <div id="rawJsonLstmContent" class="hidden" style="padding: var(--space-md); border-top: 1px solid var(--border-color);">
+                <div class="flex justify-end mb-sm">
+                    <button type="button" class="btn btn-sm btn-outline" onclick="copyRawJsonLstm()">📋 Salin JSON</button>
+                </div>
+                <pre id="rawJsonLstmDisplay" style="background: var(--bg-surface-alt); padding: 15px; border-radius: var(--radius-md); font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; overflow-x: auto; max-height: 350px;"></pre>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts_bottom %}
+<script>
+    let lstmChartsInstances = {};
+    let latestLstmResponse = null;
+
+    function toggleGuide() {
+        const body = document.getElementById('guideBody');
+        const icon = document.getElementById('guideToggleIcon');
+        if (!body) return;
+        body.classList.toggle('collapsed');
+        if (body.classList.contains('collapsed')) {
+            body.style.display = 'none';
+            if (icon) icon.textContent = '▼';
+        } else {
+            body.style.display = 'block';
+            if (icon) icon.textContent = '▲';
+        }
+    }
+
+    function toggleRawJsonLstm() {
+        const c = document.getElementById('rawJsonLstmContent');
+        const icon = document.getElementById('rawJsonLstmToggleIcon');
+        if (!c) return;
+        c.classList.toggle('hidden');
+        if (icon) icon.textContent = c.classList.contains('hidden') ? '▼' : '▲';
+    }
+
+    function copyRawJsonLstm() {
+        if (!latestLstmResponse) return;
+        navigator.clipboard.writeText(JSON.stringify(latestLstmResponse, null, 2)).then(() => {
+            alert('JSON berhasil disalin ke clipboard!');
+        });
+    }
+
+    function getLstmMetarList() {
+        const raw = document.getElementById('lstmMetarTextarea').value;
+        return raw.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    }
+
+    function onLstmTextareaChanged() {
+        updateLstmLineCounter();
+    }
+
+    function updateLstmLineCounter() {
+        const list = getLstmMetarList();
+        const badge = document.getElementById('lstmLinesBadge');
+        const hint = document.getElementById('lstmStatusHint');
+        const submitBtn = document.getElementById('lstmSubmitBtn');
+        const count = list.length;
+
+        badge.textContent = `${count} / 10 baris valid`;
+        if (count === 10) {
+            badge.className = 'tool-counter-badge badge-success';
+            hint.textContent = '✅ Siap diproses: tepat 10 kode observasi runtutan waktu';
+            submitBtn.removeAttribute('disabled');
+        } else if (count === 0) {
+            badge.className = 'tool-counter-badge';
+            hint.textContent = 'Masukkan 10 kode METAR atau klik tombol contoh';
+            submitBtn.setAttribute('disabled', 'disabled');
+        } else if (count < 10) {
+            badge.className = 'tool-counter-badge badge-warning';
+            hint.textContent = `Perlu ${10 - count} observasi lagi untuk memenuhi 10 data`;
+            submitBtn.setAttribute('disabled', 'disabled');
+        } else {
+            badge.className = 'tool-counter-badge badge-danger';
+            hint.textContent = `Kelebihan ${count - 10} baris (model memerlukan tepat 10 baris)`;
+            submitBtn.setAttribute('disabled', 'disabled');
+        }
+    }
+
+    function setLstmInput(lines) {
+        document.getElementById('lstmMetarTextarea').value = lines.join('\n');
+        updateLstmLineCounter();
+        hideLstmError();
+    }
+
+    function clearLstmInputs() {
+        document.getElementById('lstmMetarTextarea').value = '';
+        updateLstmLineCounter();
+        hideLstmError();
+    }
+
+    function showLstmError(msg) {
+        const box = document.getElementById('lstmErrorBox');
+        const txt = document.getElementById('lstmErrorText');
+        if (box && txt) {
+            txt.textContent = msg;
+            box.classList.remove('hidden');
+        }
+    }
+
+    function hideLstmError() {
+        const box = document.getElementById('lstmErrorBox');
+        if (box) box.classList.add('hidden');
+    }
+
+    // Load presets
+    async function loadLstmPreset(presetKey) {
+        hideLstmError();
+        try {
+            const resp = await fetch('/api/tool/sample-data');
+            const data = await resp.json();
+            if (data.status === 'success' && data[presetKey]) {
+                setLstmInput(data[presetKey]);
+            } else {
+                throw new Error('Gagal memuat preset contoh');
+            }
+        } catch (e) {
+            showLstmError('Gagal memuat data contoh: ' + e.message);
+        }
+    }
+
+    // Fetch live NOAA / AviationWeather 10 METARs
+    async function fetchLiveLstmMetars() {
+        hideLstmError();
+        const hint = document.getElementById('lstmStatusHint');
+        if (hint) hint.textContent = 'Mengambil 10 METAR terkini dari server...';
+        try {
+            const resp = await fetch('/api/tool/live-metars?station=WARR&count=10');
+            const data = await resp.json();
+            if (data.status === 'success' && data.metars && data.metars.length >= 10) {
+                setLstmInput(data.metars);
+            } else if (data.metars && data.metars.length > 0) {
+                setLstmInput(data.metars);
+                showLstmError(`Hanya ditemukan ${data.metars.length} observasi real-time. Diperlukan 10 data.`);
+            } else {
+                throw new Error('Tidak ada data METAR live yang dapat diambil saat ini.');
+            }
+        } catch (e) {
+            showLstmError('Gagal menarik data live: ' + e.message);
+        }
+    }
+
+    // Generate simulated data
+    async function generateSimulatedLstm() {
+        hideLstmError();
+        const mode = Math.random() > 0.5 ? 'normal' : 'extreme';
+        try {
+            const resp = await fetch(`/api/tool/generate-simulated?station=WARR&count=10&mode=${mode}`);
+            const data = await resp.json();
+            if (data.status === 'success' && data.metars) {
+                setLstmInput(data.metars);
+            }
+        } catch (e) {
+            showLstmError('Gagal generate data: ' + e.message);
+        }
+    }
+
+    // Form submission
+    async function handleLstmSubmit(event) {
+        event.preventDefault();
+        hideLstmError();
+
+        const metars = getLstmMetarList();
+        if (metars.length !== 10) {
+            showLstmError(`Jumlah data METAR harus tepat 10 baris. Saat ini terdeteksi ${metars.length} baris.`);
+            return;
+        }
+
+        const btn = document.getElementById('lstmSubmitBtn');
+        const btnText = document.getElementById('lstmBtnText');
+        btn.classList.add('loading');
+        btn.setAttribute('disabled', 'disabled');
+        btnText.textContent = 'Sedang Menjalankan Inference LSTM...';
+
+        try {
+            const resp = await fetch('/api/tool/predict-lstm', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ metars: metars })
+            });
+            const data = await resp.json();
+            if (!resp.ok || data.status === 'error') {
+                throw new Error(data.error || 'Terjadi kesalahan saat memproses model LSTM.');
+            }
+
+            latestLstmResponse = data;
+            renderLstmResults(data);
+            document.getElementById('lstmResultsSection').classList.remove('hidden');
+            document.getElementById('lstmResultsSection').scrollIntoView({ behavior: 'smooth' });
+        } catch (e) {
+            showLstmError(e.message);
+        } finally {
+            btn.classList.remove('loading');
+            btn.removeAttribute('disabled');
+            btnText.textContent = 'Jalankan Prediksi LSTM';
+        }
+    }
+
+    function renderLstmResults(data) {
+        const act = data.actual;
+        const p30 = data.predicted_30m;
+        const p1h = data.predicted_1h;
+        const d1h = data.deltas_1h;
+        const d30 = data.deltas_30m;
+
+        // 1. Metric Cards
+        // Suhu
+        document.getElementById('cardTempActual').textContent = `${act.suhu_c} °C`;
+        document.getElementById('cardTemp30m').textContent = `${p30.suhu_c} °C`;
+        document.getElementById('cardTemp1h').textContent = `${p1h.suhu_c} °C`;
+        const tempDeltaEl = document.getElementById('deltaTempBadge');
+        tempDeltaEl.textContent = `${d1h.suhu_c >= 0 ? '+' : ''}${d1h.suhu_c} °C (+1j)`;
+        tempDeltaEl.className = 'tool-metric-delta ' + (d1h.suhu_c >= 0 ? 'delta-up' : 'delta-down');
+
+        // QNH
+        document.getElementById('cardQnhActual').textContent = `${act.qnh_hpa} hPa`;
+        document.getElementById('cardQnh30m').textContent = `${p30.qnh_hpa} hPa`;
+        document.getElementById('cardQnh1h').textContent = `${p1h.qnh_hpa} hPa`;
+        const qnhDeltaEl = document.getElementById('deltaQnhBadge');
+        qnhDeltaEl.textContent = `${d1h.qnh_hpa >= 0 ? '+' : ''}${d1h.qnh_hpa} hPa (+1j)`;
+        qnhDeltaEl.className = 'tool-metric-delta ' + (d1h.qnh_hpa >= 0 ? 'delta-up' : 'delta-down');
+
+        // Wind Speed
+        document.getElementById('cardWindActual').textContent = `${act.kec_angin_kt} kt`;
+        document.getElementById('cardWind30m').textContent = `${p30.kec_angin_kt} kt`;
+        document.getElementById('cardWind1h').textContent = `${p1h.kec_angin_kt} kt`;
+        const windDeltaEl = document.getElementById('deltaWindBadge');
+        windDeltaEl.textContent = `${d1h.kec_angin_kt >= 0 ? '+' : ''}${d1h.kec_angin_kt} kt (+1j)`;
+        windDeltaEl.className = 'tool-metric-delta ' + (d1h.kec_angin_kt >= 0 ? 'delta-up' : 'delta-down');
+
+        // Dewpoint
+        document.getElementById('cardDewActual').textContent = `${act.dew_point_c} °C`;
+        document.getElementById('cardDew30m').textContent = `${p30.dew_point_c} °C`;
+        document.getElementById('cardDew1h').textContent = `${p1h.dew_point_c} °C`;
+        const dewDeltaEl = document.getElementById('deltaDewBadge');
+        dewDeltaEl.textContent = `${d1h.dew_point_c >= 0 ? '+' : ''}${d1h.dew_point_c} °C (+1j)`;
+        dewDeltaEl.className = 'tool-metric-delta ' + (d1h.dew_point_c >= 0 ? 'delta-up' : 'delta-down');
+
+        // 2. Metrics Table
+        document.getElementById('lstmTimeMeta').textContent = `Observasi Terkini: ${data.latest_metar}`;
+        const tableBody = document.getElementById('lstmMiniMetricsTableBody');
+        tableBody.innerHTML = '';
+
+        const paramDefinitions = [
+            { label: 'Suhu Udara', key: 'suhu_c', unit: '°C' },
+            { label: 'Tekanan Udara (QNH)', key: 'qnh_hpa', unit: 'hPa' },
+            { label: 'Kecepatan Angin', key: 'kec_angin_kt', unit: 'kt' },
+            { label: 'Titik Embun (Dew Point)', key: 'dew_point_c', unit: '°C' }
+        ];
+
+        paramDefinitions.forEach(param => {
+            const tr = document.createElement('tr');
+            const deltaVal = d1h[param.key];
+            const deltaSign = deltaVal >= 0 ? '+' : '';
+            const deltaClass = deltaVal >= 0 ? 'lstm-delta-up' : 'lstm-delta-down';
+            tr.innerHTML = `
+                <td><strong>${param.label}</strong></td>
+                <td>${act[param.key]} ${param.unit}</td>
+                <td class="lstm-predicted-value-30m">${p30[param.key]} ${param.unit} (${d30[param.key] >= 0 ? '+' : ''}${d30[param.key]})</td>
+                <td class="lstm-predicted-value">${p1h[param.key]} ${param.unit}</td>
+                <td class="${deltaClass}">${deltaSign}${deltaVal} ${param.unit}</td>
+            `;
+            tableBody.appendChild(tr);
+        });
+
+        // 3. Render 4 Charts
+        render4LstmCharts(data);
+
+        // 4. Render Input Observations Table
+        const obsBody = document.getElementById('lstmMiniInputTableBody');
+        obsBody.innerHTML = '';
+        data.observations.forEach(obs => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td><strong>${obs.label}</strong></td>
+                <td><code style="font-family:'JetBrains Mono',monospace; font-size:0.8rem;">${obs.raw}</code></td>
+                <td>${obs.suhu_c} °C</td>
+                <td>${obs.qnh_hpa} hPa</td>
+                <td>${obs.kec_angin_kt} kt</td>
+                <td>${obs.dew_point_c} °C</td>
+            `;
+            obsBody.appendChild(tr);
+        });
+
+        // 5. Raw JSON
+        document.getElementById('rawJsonLstmDisplay').textContent = JSON.stringify(data, null, 2);
+    }
+
+    function render4LstmCharts(data) {
+        if (typeof Chart === 'undefined') return;
+
+        const history = data.history || [];
+        const labels = history.map(h => h.label);
+        labels.push('+30 Menit');
+        labels.push('+1 Jam');
+
+        const chartConfigs = [
+            { canvasId: 'chartLstmTemp', key: 'suhu_c', label: 'Suhu (°C)', color: '#ef4444', unit: '°C' },
+            { canvasId: 'chartLstmQnh', key: 'qnh_hpa', label: 'QNH (hPa)', color: '#3b82f6', unit: 'hPa' },
+            { canvasId: 'chartLstmWind', key: 'kec_angin_kt', label: 'Angin (kt)', color: '#0f766e', unit: 'kt' },
+            { canvasId: 'chartLstmDew', key: 'dew_point_c', label: 'Titik Embun (°C)', color: '#06b6d4', unit: '°C' }
+        ];
+
+        chartConfigs.forEach(cfg => {
+            const canvas = document.getElementById(cfg.canvasId);
+            if (!canvas) return;
+
+            const actualValues = history.map(h => h[cfg.key]);
+            actualValues.push(null, null); // space for +30m and +1h in actual line
+
+            const forecastValues = Array(history.length - 1).fill(null);
+            forecastValues.push(data.actual[cfg.key]); // start connection from latest actual
+            forecastValues.push(data.predicted_30m[cfg.key]);
+            forecastValues.push(data.predicted_1h[cfg.key]);
+
+            if (lstmChartsInstances[cfg.canvasId]) {
+                lstmChartsInstances[cfg.canvasId].destroy();
+            }
+
+            lstmChartsInstances[cfg.canvasId] = new Chart(canvas, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Aktual (' + cfg.label + ')',
+                            data: actualValues,
+                            borderColor: cfg.color,
+                            backgroundColor: cfg.color + '22',
+                            pointRadius: 4,
+                            pointBackgroundColor: cfg.color,
+                            tension: 0.2,
+                            spanGaps: false
+                        },
+                        {
+                            label: 'Proyeksi LSTM (+30m & +1j)',
+                            data: forecastValues,
+                            borderColor: '#fb923c',
+                            backgroundColor: '#fb923c22',
+                            borderDash: [5, 4],
+                            pointRadius: 5,
+                            pointStyle: 'rectRot',
+                            pointBackgroundColor: '#ea580c',
+                            borderWidth: 2.5,
+                            tension: 0,
+                            spanGaps: false
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { position: 'bottom' }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: false,
+                            title: { display: true, text: cfg.unit }
+                        }
+                    }
+                }
+            });
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        updateLstmLineCounter();
+        loadLstmPreset('lstm_sample');
+    });
+</script>
+{% endblock %}

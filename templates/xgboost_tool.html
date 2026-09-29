@@ -1,0 +1,736 @@
+{% extends "layout.html" %}
+
+{% block title %}Alat Prediksi Cuaca Ekstrem (XGBoost) — METAR Auto Dashboard{% endblock %}
+
+{% block header_station_text %}
+<span class="station-dot" style="background:#f59e0b"></span>
+<span class="station-name">Alat Uji & Prediksi XGBoost</span>
+{% endblock %}
+
+{% block nav_active_xgboost %}active{% endblock %}
+
+{% block content %}
+<div class="tool-page-container fade-in">
+    <!-- Header Page -->
+    <div class="tool-header-card card mb-md">
+        <div class="tool-header-content">
+            <div class="tool-header-icon-box" style="background: rgba(245, 158, 11, 0.15); color: #f59e0b;">
+                ⚡
+            </div>
+            <div>
+                <h2 class="tool-title">Alat Prediksi Cuaca Ekstrem (XGBoost)</h2>
+                <p class="tool-subtitle">
+                    Model <strong>Gradient Boosted Decision Trees</strong> & <strong>TreeSHAP</strong> untuk mendeteksi risiko badai guntur (Thunderstorm) dan cuaca ekstrem berbasis 4 observasi METAR berurutan.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Guide / Cara Kerja Card -->
+    <div class="card mb-md tool-guide-box">
+        <div class="tool-guide-header" onclick="toggleGuide()">
+            <div class="flex items-center gap-sm">
+                <span class="tool-badge-info">ℹ️ Cara Kerja Model</span>
+                <span style="font-weight: 600; font-size: 0.95rem;">Syarat Input: Tepat 4 Kode METAR Berurutan (T-3, T-2, T-1, dan T terkini)</span>
+            </div>
+            <span class="guide-toggle-icon" id="guideToggleIcon">▲</span>
+        </div>
+        <div class="tool-guide-body" id="guideBody">
+            <p style="margin-top: 8px; color: var(--text-secondary); font-size: 0.9rem; line-height: 1.5;">
+                Model XGBoost Early Warning System (EWS) dilatih menggunakan <strong>fitur observasi terkini ($T$)</strong> dan <strong>fitur jeda waktu (time-lag 1, 2, dan 3)</strong>.
+                Dengan memasukkan 4 data METAR berturut-turut dari waktu terlama ke terbaru, model dapat menganalisis laju penurunan tekanan QNH, lonjakan kecepatan angin, dan konvergensi titik embun untuk mengidentifikasi pembentukan awan Cumulonimbus (CB) atau badai guntur (TS).
+            </p>
+            <div class="tool-steps-grid">
+                <div class="tool-step-item">
+                    <span class="step-num">1</span>
+                    <strong>Observasi 1 (T-3)</strong>
+                    <small>3 observasi lalu (~1.5 jam lalu)</small>
+                </div>
+                <div class="tool-step-item">
+                    <span class="step-num">2</span>
+                    <strong>Observasi 2 (T-2)</strong>
+                    <small>2 observasi lalu (~1 jam lalu)</small>
+                </div>
+                <div class="tool-step-item">
+                    <span class="step-num">3</span>
+                    <strong>Observasi 3 (T-1)</strong>
+                    <small>1 observasi lalu (~30 mnt lalu)</small>
+                </div>
+                <div class="tool-step-item current-step">
+                    <span class="step-num">4</span>
+                    <strong>Observasi 4 (T Terkini)</strong>
+                    <small>Observasi cuaca saat ini</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Input Form Card -->
+    <div class="card mb-md">
+        <div class="card-header" style="flex-wrap: wrap; gap: 10px;">
+            <div class="flex items-center gap-sm">
+                <h3 class="card-title"><span class="icon">📝</span> Masukkan Data 4 Kode METAR</h3>
+                <span class="tool-counter-badge" id="xgbCountBadge">0 / 4 baris valid</span>
+            </div>
+
+            <!-- Tab Mode Switcher -->
+            <div class="tool-mode-tabs">
+                <button type="button" class="mode-tab-btn active" id="tabModeTextarea" onclick="switchInputMode('textarea')">📄 Teks Multi-baris</button>
+                <button type="button" class="mode-tab-btn" id="tabModeIndividual" onclick="switchInputMode('individual')">🔢 4 Baris Terpisah</button>
+            </div>
+        </div>
+
+        <!-- Quick Preset & Generator Bar -->
+        <div class="tool-preset-toolbar">
+            <span class="toolbar-label">Coba Data Contoh:</span>
+            <button type="button" class="btn btn-sm btn-outline tool-preset-btn" onclick="loadSamplePreset('xgboost_normal')">
+                ☀️ Cuaca Normal (Aman)
+            </button>
+            <button type="button" class="btn btn-sm btn-outline tool-preset-btn" onclick="loadSamplePreset('xgboost_extreme')">
+                ⛈️ Cuaca Ekstrem (Badai TS)
+            </button>
+            <button type="button" class="btn btn-sm btn-outline tool-preset-btn" onclick="fetchLiveMetars()">
+                📡 Tarik 4 METAR Terkini (Live NOAA)
+            </button>
+            <button type="button" class="btn btn-sm btn-outline tool-preset-btn" onclick="generateSimulatedMetars()">
+                🎲 Generate Data Acak
+            </button>
+            <button type="button" class="btn btn-sm btn-ghost tool-preset-btn" onclick="clearInputs()" title="Kosongkan formulir">
+                🗑️ Bersihkan
+            </button>
+        </div>
+
+        <form id="xgbPredictForm" onsubmit="handleXgbSubmit(event)">
+            <!-- Mode 1: Textarea (Default) -->
+            <div id="modeTextareaContainer">
+                <div class="form-group mb-sm">
+                    <label for="xgbMetarTextarea" class="flex justify-between items-center">
+                        <span>Paste 4 baris kode METAR berurutan (1 baris per observasi, urutan dari terlama ke terbaru):</span>
+                        <small class="text-muted">Format: METAR WARR ...</small>
+                    </label>
+                    <textarea id="xgbMetarTextarea" class="form-input tool-textarea" rows="6"
+                        placeholder="Contoh:
+METAR WARR 290800Z 11013KT CAVOK 31/23 Q1011 NOSIG
+METAR WARR 290830Z 12015KT 9999 FEW020 31/24 Q1011 NOSIG
+METAR WARR 290900Z 11014KT 9999 FEW020 31/24 Q1011 NOSIG
+METAR WARR 290930Z 12014KT 9999 FEW020 30/24 Q1011 NOSIG"
+                        oninput="onTextareaChanged()"></textarea>
+                </div>
+            </div>
+
+            <!-- Mode 2: Individual 4 Fields -->
+            <div id="modeIndividualContainer" class="hidden">
+                <div class="grid grid-cols-1 gap-sm">
+                    <div class="form-group">
+                        <label for="inputObs1"><span class="tool-step-badge">1</span> Observasi 1 (T-3 / 3 Observasi Lalu):</label>
+                        <input type="text" id="inputObs1" class="form-input mono-font" placeholder="METAR WARR 290800Z 11013KT CAVOK 31/23 Q1011 NOSIG" oninput="onIndividualChanged()">
+                    </div>
+                    <div class="form-group">
+                        <label for="inputObs2"><span class="tool-step-badge">2</span> Observasi 2 (T-2 / 2 Observasi Lalu):</label>
+                        <input type="text" id="inputObs2" class="form-input mono-font" placeholder="METAR WARR 290830Z 12015KT 9999 FEW020 31/24 Q1011 NOSIG" oninput="onIndividualChanged()">
+                    </div>
+                    <div class="form-group">
+                        <label for="inputObs3"><span class="tool-step-badge">3</span> Observasi 3 (T-1 / 1 Observasi Lalu):</label>
+                        <input type="text" id="inputObs3" class="form-input mono-font" placeholder="METAR WARR 290900Z 11014KT 9999 FEW020 31/24 Q1011 NOSIG" oninput="onIndividualChanged()">
+                    </div>
+                    <div class="form-group">
+                        <label for="inputObs4"><span class="tool-step-badge current">4</span> Observasi 4 (T Terkini / Cuaca Saat Ini):</label>
+                        <input type="text" id="inputObs4" class="form-input mono-font" placeholder="METAR WARR 290930Z 12014KT 9999 FEW020 30/24 Q1011 NOSIG" oninput="onIndividualChanged()">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Error Notification Box -->
+            <div id="xgbErrorBox" class="alert-box alert-error hidden">
+                <span class="icon">⚠️</span>
+                <span id="xgbErrorText">Terjadi kesalahan pada data input.</span>
+            </div>
+
+            <!-- Submit Button Bar -->
+            <div class="tool-action-bar">
+                <button type="submit" class="btn btn-primary btn-lg" id="xgbSubmitBtn">
+                    <span class="btn-icon">⚡</span>
+                    <span id="xgbBtnText">Jalankan Prediksi XGBoost</span>
+                </button>
+                <span class="text-muted" style="font-size: 0.85rem;" id="xgbStatusHint">Siap memproses 4 kode METAR</span>
+            </div>
+        </form>
+    </div>
+
+    <!-- ============================================
+         RESULTS SECTION
+         ============================================ -->
+    <div id="xgbResultsSection" class="hidden">
+        <!-- Status Card (EWS Indicator) -->
+        <div class="card mb-md ews-panel">
+            <div class="card-header ews-header-flex">
+                <div class="ews-title-group">
+                    <h3 class="card-title"><span class="icon">🔬</span> Hasil Analisis Prediktif XGBoost</h3>
+                    <p class="ews-card-subtitle">Deteksi Dini Thunderstorm & Shapley Additive Explanations (TreeSHAP)</p>
+                </div>
+                <div class="ews-header-actions">
+                    <span class="ews-updated" id="resPredictionTime">Waktu Prediksi: Baru saja</span>
+                </div>
+            </div>
+
+            <div class="ews-overview grid grid-cols-1 gap-4 md:grid-cols-[minmax(180px,0.7fr)_2fr]">
+                <div class="ews-indicator" id="resIndicator" data-state="safe">
+                    <span class="ews-status-label" id="resStatusLabel">AMAN</span>
+                    <span class="ews-confidence" id="resConfidence">--%</span>
+                    <span class="ews-confidence-caption">Keyakinan Model</span>
+                    <div style="margin-top: 8px; font-size: 0.75rem; color: var(--text-muted);">
+                        Probabilitas Bahaya: <strong id="resDangerProb">0%</strong>
+                    </div>
+                </div>
+                <div class="ews-narrative">
+                    <h4>Naratif Potensi Cuaca</h4>
+                    <p id="resDescription">Model menganalisis parameter cuaca dari 4 data observasi.</p>
+                    <span class="ews-metar" id="resLatestMetar">METAR Terbaru: --</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Ekstraksi Fitur 4 Observasi (Tabel) -->
+        <div class="card mb-md">
+            <div class="card-header">
+                <h3 class="card-title"><span class="icon">📊</span> Parameter Terurai dari 4 Kode METAR</h3>
+            </div>
+            <div class="table-responsive">
+                <table class="data-table modern-table" style="font-size: 0.88rem;">
+                    <thead>
+                        <tr>
+                            <th>Observasi</th>
+                            <th>Kode METAR</th>
+                            <th>Suhu (°C)</th>
+                            <th>Titik Embun (°C)</th>
+                            <th>QNH (hPa)</th>
+                            <th>Angin (kt)</th>
+                            <th>Arah (°)</th>
+                            <th>Visibilitas (m)</th>
+                            <th>Status Badai</th>
+                        </tr>
+                    </thead>
+                    <tbody id="resObservationTableBody">
+                        <!-- Populated dynamically -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Grafik Tren Kecepatan Angin & Tekanan QNH -->
+        <div class="grid grid-cols-1 gap-md md:grid-cols-2 mb-md">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title"><span class="icon">💨</span> Tren Kecepatan Angin (kt)</h3>
+                </div>
+                <div style="height: 240px; padding: 10px; position: relative;">
+                    <canvas id="resWindChart"></canvas>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title"><span class="icon">📉</span> Tren Tekanan Udara QNH (hPa)</h3>
+                </div>
+                <div style="height: 240px; padding: 10px; position: relative;">
+                    <canvas id="resQnhChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- TreeSHAP Contribution Chart & Detail Table -->
+        <div class="card mb-md">
+            <div class="card-header">
+                <div>
+                    <h3 class="card-title"><span class="icon">🌳</span> Kontribusi Fitur Model (TreeSHAP)</h3>
+                    <p class="ews-card-subtitle">
+                        Nilai positif (<span style="color:#dc2626; font-weight:600;">merah</span>) mendorong prediksi ke arah <strong>BAHAYA</strong>, sedangkan nilai negatif (<span style="color:#059669; font-weight:600;">hijau</span>) menurunkan risiko ke arah <strong>AMAN</strong>.
+                    </p>
+                </div>
+            </div>
+            <div style="height: 320px; padding: 10px; position: relative;">
+                <canvas id="resShapChart"></canvas>
+            </div>
+
+            <!-- Tabel Fitur TreeSHAP -->
+            <div class="table-responsive" style="margin-top: 15px; border-top: 1px solid var(--border-color);">
+                <table class="data-table modern-table" style="font-size: 0.85rem;">
+                    <thead>
+                        <tr>
+                            <th>Parameter Cuaca / Fitur</th>
+                            <th>Nilai Observasi</th>
+                            <th>Skor SHAP (log-odds)</th>
+                            <th>Arah Pengaruh</th>
+                        </tr>
+                    </thead>
+                    <tbody id="resShapTableBody">
+                        <!-- Populated dynamically -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Raw JSON Collapsible -->
+        <div class="card mb-md">
+            <div class="card-header" style="cursor: pointer;" onclick="toggleRawJson()">
+                <div class="flex items-center gap-sm">
+                    <span class="icon">🔧</span>
+                    <h3 class="card-title">Respons Teknis (JSON Raw Data)</h3>
+                </div>
+                <span id="rawJsonToggleIcon">▼</span>
+            </div>
+            <div id="rawJsonContent" class="hidden" style="padding: var(--space-md); border-top: 1px solid var(--border-color);">
+                <div class="flex justify-end mb-sm">
+                    <button type="button" class="btn btn-sm btn-outline" onclick="copyRawJson()">📋 Salin JSON</button>
+                </div>
+                <pre id="rawJsonDisplay" style="background: var(--bg-surface-alt); padding: 15px; border-radius: var(--radius-md); font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; overflow-x: auto; max-height: 350px;"></pre>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts_bottom %}
+<script>
+    let currentInputMode = 'textarea';
+    let windChartInstance = null;
+    let qnhChartInstance = null;
+    let shapChartInstance = null;
+    let latestResponseData = null;
+
+    // Toggle usage guide
+    function toggleGuide() {
+        const body = document.getElementById('guideBody');
+        const icon = document.getElementById('guideToggleIcon');
+        if (!body) return;
+        body.classList.toggle('collapsed');
+        if (body.classList.contains('collapsed')) {
+            body.style.display = 'none';
+            if (icon) icon.textContent = '▼';
+        } else {
+            body.style.display = 'block';
+            if (icon) icon.textContent = '▲';
+        }
+    }
+
+    // Toggle Raw JSON
+    function toggleRawJson() {
+        const c = document.getElementById('rawJsonContent');
+        const icon = document.getElementById('rawJsonToggleIcon');
+        if (!c) return;
+        c.classList.toggle('hidden');
+        if (icon) icon.textContent = c.classList.contains('hidden') ? '▼' : '▲';
+    }
+
+    function copyRawJson() {
+        if (!latestResponseData) return;
+        navigator.clipboard.writeText(JSON.stringify(latestResponseData, null, 2)).then(() => {
+            alert('JSON berhasil disalin ke clipboard!');
+        });
+    }
+
+    // Switch between textarea and individual field mode
+    function switchInputMode(mode) {
+        currentInputMode = mode;
+        const tabTextarea = document.getElementById('tabModeTextarea');
+        const tabIndividual = document.getElementById('tabModeIndividual');
+        const boxTextarea = document.getElementById('modeTextareaContainer');
+        const boxIndividual = document.getElementById('modeIndividualContainer');
+
+        if (mode === 'textarea') {
+            tabTextarea.classList.add('active');
+            tabIndividual.classList.remove('active');
+            boxTextarea.classList.remove('hidden');
+            boxIndividual.classList.add('hidden');
+            syncIndividualToTextarea();
+        } else {
+            tabIndividual.classList.add('active');
+            tabTextarea.classList.remove('active');
+            boxIndividual.classList.remove('hidden');
+            boxTextarea.classList.add('hidden');
+            syncTextareaToIndividual();
+        }
+        updateLineCounter();
+    }
+
+    // Sync helpers
+    function syncTextareaToIndividual() {
+        const text = document.getElementById('xgbMetarTextarea').value;
+        const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+        document.getElementById('inputObs1').value = lines[0] || '';
+        document.getElementById('inputObs2').value = lines[1] || '';
+        document.getElementById('inputObs3').value = lines[2] || '';
+        document.getElementById('inputObs4').value = lines[3] || '';
+    }
+
+    function syncIndividualToTextarea() {
+        const obs1 = document.getElementById('inputObs1').value.trim();
+        const obs2 = document.getElementById('inputObs2').value.trim();
+        const obs3 = document.getElementById('inputObs3').value.trim();
+        const obs4 = document.getElementById('inputObs4').value.trim();
+        const lines = [obs1, obs2, obs3, obs4].filter(Boolean);
+        if (lines.length > 0) {
+            document.getElementById('xgbMetarTextarea').value = lines.join('\n');
+        }
+    }
+
+    function onTextareaChanged() {
+        updateLineCounter();
+    }
+
+    function onIndividualChanged() {
+        syncIndividualToTextarea();
+        updateLineCounter();
+    }
+
+    function getMetarList() {
+        if (currentInputMode === 'textarea') {
+            const raw = document.getElementById('xgbMetarTextarea').value;
+            return raw.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+        } else {
+            const obs1 = document.getElementById('inputObs1').value.trim();
+            const obs2 = document.getElementById('inputObs2').value.trim();
+            const obs3 = document.getElementById('inputObs3').value.trim();
+            const obs4 = document.getElementById('inputObs4').value.trim();
+            return [obs1, obs2, obs3, obs4].filter(Boolean);
+        }
+    }
+
+    function updateLineCounter() {
+        const list = getMetarList();
+        const badge = document.getElementById('xgbCountBadge');
+        const hint = document.getElementById('xgbStatusHint');
+        const submitBtn = document.getElementById('xgbSubmitBtn');
+        const count = list.length;
+
+        badge.textContent = `${count} / 4 baris valid`;
+        if (count === 4) {
+            badge.className = 'tool-counter-badge badge-success';
+            hint.textContent = '✅ Siap diproses: tepat 4 kode observasi';
+            submitBtn.removeAttribute('disabled');
+        } else if (count === 0) {
+            badge.className = 'tool-counter-badge';
+            hint.textContent = 'Masukkan 4 kode METAR atau klik tombol contoh';
+            submitBtn.setAttribute('disabled', 'disabled');
+        } else if (count < 4) {
+            badge.className = 'tool-counter-badge badge-warning';
+            hint.textContent = `Perlu ${4 - count} observasi lagi untuk memenuhi 4 data`;
+            submitBtn.setAttribute('disabled', 'disabled');
+        } else {
+            badge.className = 'tool-counter-badge badge-danger';
+            hint.textContent = `Kelebihan ${count - 4} baris (model memerlukan tepat 4 baris)`;
+            submitBtn.setAttribute('disabled', 'disabled');
+        }
+    }
+
+    function setMetarInput(lines) {
+        document.getElementById('xgbMetarTextarea').value = lines.join('\n');
+        syncTextareaToIndividual();
+        updateLineCounter();
+        hideError();
+    }
+
+    function clearInputs() {
+        document.getElementById('xgbMetarTextarea').value = '';
+        document.getElementById('inputObs1').value = '';
+        document.getElementById('inputObs2').value = '';
+        document.getElementById('inputObs3').value = '';
+        document.getElementById('inputObs4').value = '';
+        updateLineCounter();
+        hideError();
+    }
+
+    function showError(msg) {
+        const box = document.getElementById('xgbErrorBox');
+        const txt = document.getElementById('xgbErrorText');
+        if (box && txt) {
+            txt.textContent = msg;
+            box.classList.remove('hidden');
+        }
+    }
+
+    function hideError() {
+        const box = document.getElementById('xgbErrorBox');
+        if (box) box.classList.add('hidden');
+    }
+
+    // Load presets
+    async function loadSamplePreset(presetKey) {
+        hideError();
+        try {
+            const resp = await fetch('/api/tool/sample-data');
+            const data = await resp.json();
+            if (data.status === 'success' && data[presetKey]) {
+                setMetarInput(data[presetKey]);
+            } else {
+                throw new Error('Gagal memuat preset contoh');
+            }
+        } catch (e) {
+            showError('Gagal memuat data contoh: ' + e.message);
+        }
+    }
+
+    // Fetch live NOAA / AviationWeather
+    async function fetchLiveMetars() {
+        hideError();
+        const hint = document.getElementById('xgbStatusHint');
+        if (hint) hint.textContent = 'Mengambil 4 METAR terkini dari server...';
+        try {
+            const resp = await fetch('/api/tool/live-metars?station=WARR&count=4');
+            const data = await resp.json();
+            if (data.status === 'success' && data.metars && data.metars.length >= 4) {
+                setMetarInput(data.metars);
+            } else if (data.metars && data.metars.length > 0) {
+                setMetarInput(data.metars);
+                showError(`Hanya ditemukan ${data.metars.length} observasi real-time. Lengkapi hingga 4 baris.`);
+            } else {
+                throw new Error('Tidak ada data METAR live yang dapat diambil saat ini.');
+            }
+        } catch (e) {
+            showError('Gagal menarik data live: ' + e.message);
+        }
+    }
+
+    // Generate simulated data
+    async function generateSimulatedMetars() {
+        hideError();
+        const mode = Math.random() > 0.5 ? 'normal' : 'extreme';
+        try {
+            const resp = await fetch(`/api/tool/generate-simulated?station=WARR&count=4&mode=${mode}`);
+            const data = await resp.json();
+            if (data.status === 'success' && data.metars) {
+                setMetarInput(data.metars);
+            }
+        } catch (e) {
+            showError('Gagal generate data: ' + e.message);
+        }
+    }
+
+    // Form submission
+    async function handleXgbSubmit(event) {
+        event.preventDefault();
+        hideError();
+
+        const metars = getMetarList();
+        if (metars.length !== 4) {
+            showError(`Jumlah data METAR harus tepat 4 baris. Saat ini terdeteksi ${metars.length} baris.`);
+            return;
+        }
+
+        const btn = document.getElementById('xgbSubmitBtn');
+        const btnText = document.getElementById('xgbBtnText');
+        btn.classList.add('loading');
+        btn.setAttribute('disabled', 'disabled');
+        btnText.textContent = 'Sedang Memproses Model...';
+
+        try {
+            const resp = await fetch('/api/tool/predict-xgboost', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ metars: metars })
+            });
+            const data = await resp.json();
+            if (!resp.ok || data.status === 'error') {
+                throw new Error(data.error || 'Terjadi kesalahan saat mengeksekusi model XGBoost.');
+            }
+
+            latestResponseData = data;
+            renderXgbResults(data);
+            document.getElementById('xgbResultsSection').classList.remove('hidden');
+            // Scroll to results
+            document.getElementById('xgbResultsSection').scrollIntoView({ behavior: 'smooth' });
+        } catch (e) {
+            showError(e.message);
+        } finally {
+            btn.classList.remove('loading');
+            btn.removeAttribute('disabled');
+            btnText.textContent = 'Jalankan Prediksi XGBoost';
+        }
+    }
+
+    // Render results
+    function renderXgbResults(data) {
+        // 1. Status Indicator
+        const indicator = document.getElementById('resIndicator');
+        const statusLabel = document.getElementById('resStatusLabel');
+        const confidence = document.getElementById('resConfidence');
+        const dangerProb = document.getElementById('resDangerProb');
+        const description = document.getElementById('resDescription');
+        const latestMetar = document.getElementById('resLatestMetar');
+        const timeEl = document.getElementById('resPredictionTime');
+
+        const isDanger = data.is_danger;
+        indicator.dataset.state = isDanger ? 'danger' : 'safe';
+        statusLabel.textContent = data.model_status;
+        confidence.textContent = `${data.confidence_percent}%`;
+        dangerProb.textContent = `${data.danger_probability}%`;
+        description.textContent = data.description;
+        latestMetar.textContent = `METAR Terkini: ${data.latest_metar}`;
+        timeEl.textContent = `Waktu Prediksi: ${new Date().toLocaleTimeString('id-ID')}`;
+
+        // 2. Observations Table
+        const tbody = document.getElementById('resObservationTableBody');
+        tbody.innerHTML = '';
+        data.observations.forEach(obs => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td><strong>${obs.label}</strong></td>
+                <td><code style="font-family:'JetBrains Mono',monospace; font-size:0.8rem;">${obs.raw}</code></td>
+                <td>${obs.suhu_c !== null ? obs.suhu_c + ' °C' : '--'}</td>
+                <td>${obs.dew_point_c !== null ? obs.dew_point_c + ' °C' : '--'}</td>
+                <td>${obs.qnh_hpa !== null ? obs.qnh_hpa + ' hPa' : '--'}</td>
+                <td>${obs.kec_angin_kt !== null ? obs.kec_angin_kt + ' kt' : '--'}</td>
+                <td>${obs.arah_angin_deg !== null ? obs.arah_angin_deg + '°' : '--'}</td>
+                <td>${obs.visibilitas_m !== null ? obs.visibilitas_m + ' m' : '--'}</td>
+                <td>${obs.thunderstorm ? '<span class="badge badge-danger">⚡ TS/CB</span>' : '<span class="badge badge-success">Normal</span>'}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        // 3. Render Trend Charts
+        renderTrendCharts(data.history_chart);
+
+        // 4. Render TreeSHAP Chart & Table
+        renderShapAnalysis(data.explanation);
+
+        // 5. Raw JSON Display
+        document.getElementById('rawJsonDisplay').textContent = JSON.stringify(data, null, 2);
+    }
+
+    function renderTrendCharts(history) {
+        if (typeof Chart === 'undefined') return;
+
+        const labels = history.map(h => h.label);
+        const windValues = history.map(h => h.wind_speed_kt);
+        const qnhValues = history.map(h => h.qnh_hpa);
+
+        // Wind Chart
+        const windCanvas = document.getElementById('resWindChart');
+        if (windChartInstance) windChartInstance.destroy();
+        windChartInstance = new Chart(windCanvas, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Kecepatan Angin (kt)',
+                    data: windValues,
+                    borderColor: '#0f766e',
+                    backgroundColor: 'rgba(15, 118, 110, 0.15)',
+                    pointRadius: 6,
+                    pointBackgroundColor: '#0f766e',
+                    borderWidth: 2.5,
+                    tension: 0.25,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: { beginAtZero: false, title: { display: true, text: 'Knots' } }
+                }
+            }
+        });
+
+        // QNH Chart
+        const qnhCanvas = document.getElementById('resQnhChart');
+        if (qnhChartInstance) qnhChartInstance.destroy();
+        qnhChartInstance = new Chart(qnhCanvas, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Tekanan QNH (hPa)',
+                    data: qnhValues,
+                    borderColor: '#2563a6',
+                    backgroundColor: 'rgba(37, 99, 166, 0.15)',
+                    pointRadius: 6,
+                    pointBackgroundColor: '#2563a6',
+                    borderWidth: 2.5,
+                    tension: 0.25,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: { beginAtZero: false, title: { display: true, text: 'hPa' } }
+                }
+            }
+        });
+    }
+
+    function renderShapAnalysis(explanation) {
+        if (!explanation || !explanation.features) return;
+        const topFeatures = explanation.features.slice(0, 10);
+
+        // Table
+        const tbody = document.getElementById('resShapTableBody');
+        tbody.innerHTML = '';
+        topFeatures.forEach(feat => {
+            const tr = document.createElement('tr');
+            const isDangerImpact = feat.shap_value > 0;
+            tr.innerHTML = `
+                <td><strong>${feat.label}</strong></td>
+                <td><code>${feat.value !== null ? feat.value : '--'}</code></td>
+                <td><strong style="color: ${isDangerImpact ? '#dc2626' : '#059669'};">${feat.shap_value > 0 ? '+' : ''}${feat.shap_value}</strong></td>
+                <td>
+                    <span class="badge ${isDangerImpact ? 'badge-danger' : 'badge-success'}">
+                        ${isDangerImpact ? '▲ Mendorong Bahaya' : '▼ Menurunkan Risiko'}
+                    </span>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        // Horizontal Bar Chart
+        if (typeof Chart === 'undefined') return;
+        const shapCanvas = document.getElementById('resShapChart');
+        if (shapChartInstance) shapChartInstance.destroy();
+
+        shapChartInstance = new Chart(shapCanvas, {
+            type: 'bar',
+            data: {
+                labels: topFeatures.map(f => f.label),
+                datasets: [{
+                    label: 'Kontribusi SHAP (log-odds)',
+                    data: topFeatures.map(f => f.shap_value),
+                    backgroundColor: topFeatures.map(f => f.shap_value >= 0 ? 'rgba(220, 38, 38, 0.8)' : 'rgba(5, 150, 105, 0.8)'),
+                    borderColor: topFeatures.map(f => f.shap_value >= 0 ? '#b91c1c' : '#047857'),
+                    borderWidth: 1,
+                    borderRadius: 4,
+                    barThickness: 20
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => `Dampak log-odds: ${ctx.raw > 0 ? '+' : ''}${ctx.raw}`,
+                            afterLabel: ctx => `Nilai observasi: ${topFeatures[ctx.dataIndex].value ?? 'N/A'}`
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        title: { display: true, text: 'Kontribusi Dampak (log-odds) · Nilai positif > 0 = BAHAYA' },
+                        grid: { color: ctx => ctx.tick.value === 0 ? '#64748b' : 'rgba(148, 163, 184, 0.2)' }
+                    },
+                    y: { reverse: true, grid: { display: false } }
+                }
+            }
+        });
+    }
+
+    // Initial load
+    document.addEventListener('DOMContentLoaded', function () {
+        updateLineCounter();
+        // Load default normal preset so the tool is ready to try immediately!
+        loadSamplePreset('xgboost_normal');
+    });
+</script>
+{% endblock %}

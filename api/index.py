@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, send_file, jsonify, make_response  # pyre-ignore
+from flask import Flask, render_template, request, send_file, jsonify, make_response, redirect  # pyre-ignore
 import json
 import random
 import requests  # pyre-ignore
@@ -1469,6 +1469,515 @@ def api_lstm_forecast():
             "error": "Forecast LSTM gagal diproses.",
             "error_code": type(error).__name__,
         }), 500
+
+
+# ============================================================
+# INTERACTIVE TOOLS: XGBOOST & LSTM EXPERIMENTATION & PREDICTION
+# ============================================================
+
+def fetch_tool_live_metars(station="WARR", count=10):
+    """Fetch live METAR observations for testing tools, returned in chronological order (oldest to newest)."""
+    station = (station or "WARR").strip().upper()
+    try:
+        url = f"https://aviationweather.gov/api/data/metar?ids={station}&format=raw&hours=14"
+        resp = requests.get(url, timeout=6)
+        if resp.ok and resp.text.strip():
+            lines = [l.strip() for l in resp.text.splitlines() if l.strip() and station in l]
+            # AviationWeather returns newest first; reverse for chronological order
+            lines.reverse()
+            if lines:
+                return lines[-count:] if len(lines) >= count else lines
+    except Exception as e:
+        print(f"[TOOL LIVE FETCH] AviationWeather failed: {e}", file=sys.stderr)
+
+    # Fallback: sheets or local CSV
+    try:
+        rows = sheets_handler.get_recent_data(limit=count * 2, bypass_cache=True)
+        station_rows = [r.get("metar") for r in rows if str(r.get("station", "")).strip().upper() == station and r.get("metar")]
+        if station_rows:
+            return [normalize_metar(m) for m in station_rows[-count:]]
+    except Exception:
+        pass
+
+    return []
+
+
+def generate_tool_simulated_metars(count=4, mode="normal", station="WARR"):
+    """
+    Generate realistic simulated METAR observations for testing and experimentation.
+    mode can be 'normal' or 'extreme' (thunderstorm progression).
+    """
+    station = (station or "WARR").strip().upper()
+    metars = []
+    now = datetime.now()
+    minute = 30 if now.minute >= 30 else 0
+    base_time = now.replace(minute=minute, second=0, microsecond=0) - timedelta(minutes=30 * (count - 1))
+
+    temp = 32.0 if mode == "normal" else 33.0
+    dew = 24.0 if mode == "normal" else 25.0
+    qnh = 1012 if mode == "normal" else 1010
+    wind_spd = 12 if mode == "normal" else 14
+    wind_dir = 110
+
+    for i in range(count):
+        t = base_time + timedelta(minutes=30 * i)
+        time_str = f"{t.day:02d}{t.hour:02d}{t.minute:02d}Z"
+        if mode == "normal":
+            temp = max(26.0, min(36.0, temp + random.uniform(-0.6, 0.6)))
+            dew = max(20.0, min(27.0, dew + random.uniform(-0.4, 0.4)))
+            qnh = max(1007, min(1016, qnh + random.choice([-1, 0, 1])))
+            wind_spd = max(4, min(24, wind_spd + random.randint(-2, 2)))
+            wind_dir = (wind_dir + random.randint(-15, 15)) % 360
+            weather_phenom = "9999 FEW020" if random.random() > 0.4 else "CAVOK"
+            wind_str = f"{wind_dir:03d}{wind_spd:02d}KT"
+        else:
+            if i >= count - 2:
+                temp = max(23.0, temp - 3.5)
+                dew = min(26.0, dew + 0.5)
+                qnh = max(1001, qnh - 3)
+                wind_spd = min(48, wind_spd + 14)
+                wind_dir = 280
+                gust_spd = wind_spd + random.randint(12, 18)
+                wind_str = f"{wind_dir:03d}{wind_spd:02d}G{gust_spd:02d}KT"
+                weather_phenom = "1500 +TSRA FEW015CB"
+            elif i >= count - 4:
+                qnh = max(1004, qnh - 1)
+                wind_spd = min(25, wind_spd + 4)
+                wind_dir = 140
+                wind_str = f"{wind_dir:03d}{wind_spd:02d}KT"
+                weather_phenom = "5000 TS FEW020CB"
+            else:
+                wind_str = f"{wind_dir:03d}{wind_spd:02d}KT"
+                weather_phenom = "8000 SCT020"
+
+        t_int = int(round(temp))
+        d_int = int(round(dew))
+        m = f"METAR {station} {time_str} {wind_str} {weather_phenom} {t_int:02d}/{d_int:02d} Q{qnh} NOSIG"
+        metars.append(m)
+
+    return metars
+
+
+def run_xgboost_metar_prediction(metar_list):
+    """
+    Run XGBoost thunderstorm risk prediction on exactly 4 sequential METAR strings.
+    metar_list[0] = T-3 (oldest)
+    metar_list[1] = T-2
+    metar_list[2] = T-1
+    metar_list[3] = T-0 (latest)
+    """
+    if not isinstance(metar_list, list):
+        return {"status": "error", "error": "Input harus berupa daftar (array) berisi 4 kode METAR."}
+
+    cleaned_metars = [normalize_metar(str(m)) for m in metar_list if str(m).strip()]
+    if len(cleaned_metars) != 4:
+        return {
+            "status": "error",
+            "error": f"Model XGBoost memerlukan tepat 4 kode METAR berurutan (T-3, T-2, T-1, dan T terkini). Ditemukan {len(cleaned_metars)} data."
+        }
+
+    observations = []
+    labels = ["T-3 (3 observasi lalu)", "T-2 (2 observasi lalu)", "T-1 (1 observasi lalu)", "T (Observasi Terkini)"]
+    for idx, raw_metar in enumerate(cleaned_metars):
+        try:
+            parsed = _parse_ews_metar(raw_metar)
+            tokens = raw_metar.split()
+            time_token = ""
+            for tok in tokens[1:3]:
+                if tok.endswith("Z") and len(tok) == 7 and tok[:6].isdigit():
+                    time_token = tok
+                    break
+
+            parsed["raw"] = raw_metar
+            parsed["index"] = idx
+            parsed["label"] = labels[idx]
+            parsed["time_token"] = time_token
+            observations.append(parsed)
+        except Exception as e:
+            return {
+                "status": "error",
+                "error": f"Format kode METAR baris ke-{idx+1} tidak valid ('{raw_metar[:35]}...'): {str(e)}"
+            }
+
+    # Construct feature values
+    current = observations[-1]
+    feature_values = {
+        "arah_angin_deg": 0.0 if math.isnan(current["arah_angin_deg"]) else float(current["arah_angin_deg"]),
+        "kec_angin_kt": 0.0 if math.isnan(current["kec_angin_kt"]) else float(current["kec_angin_kt"]),
+        "visibilitas_m": 10000.0 if math.isnan(current["visibilitas_m"]) else float(current["visibilitas_m"]),
+        "suhu_c": float(current["suhu_c"]),
+        "dew_point_c": float(current["dew_point_c"]),
+        "qnh_hpa": float(current["qnh_hpa"]),
+        "status_cuaca_sekarang": int(current["status_cuaca_sekarang"]),
+    }
+    lag_feature_sources = {
+        "suhu_c": "suhu_c",
+        "qnh_hpa": "qnh_hpa",
+        "kec_angin_kt": "kec_angin_kt",
+        "dew_point_c": "dew_point_c",
+    }
+    for lag in range(1, 4):
+        previous = observations[-lag - 1]
+        for feature_name, observation_key in lag_feature_sources.items():
+            val = previous[observation_key]
+            feature_values[f"{feature_name}_lag_{lag}"] = float(val) if math.isfinite(val) else 0.0
+
+    model, feature_order = _load_ews_assets()
+    missing_features = [name for name in feature_order if name not in feature_values]
+    if missing_features:
+        return {"status": "error", "error": f"Fitur model belum lengkap: {', '.join(missing_features)}"}
+
+    feature_frame = pd.DataFrame(
+        [[feature_values[name] for name in feature_order]],
+        columns=feature_order,
+    )
+
+    probabilities = model.predict_proba(feature_frame)[0]
+    class_index = list(model.classes_).index(1) if 1 in model.classes_ else 1
+    danger_probability = float(probabilities[class_index])
+    prediction = model.predict(feature_frame)[0]
+    is_danger = int(prediction) == 1
+    confidence = danger_probability if is_danger else 1.0 - danger_probability
+
+    import xgboost as xgb
+    contribution_frame = xgb.DMatrix(feature_frame, feature_names=feature_order)
+    contribution_values = model.get_booster().predict(
+        contribution_frame,
+        pred_contribs=True,
+    )[0]
+
+    feature_labels = {
+        "arah_angin_deg": "Arah angin saat ini (°)",
+        "kec_angin_kt": "Kecepatan angin saat ini (kt)",
+        "visibilitas_m": "Visibilitas saat ini (m)",
+        "suhu_c": "Suhu saat ini (°C)",
+        "dew_point_c": "Titik embun saat ini (°C)",
+        "qnh_hpa": "Tekanan QNH saat ini (hPa)",
+        "status_cuaca_sekarang": "Indikator kode badai/TS saat ini",
+        "suhu_c_lag_1": "Suhu (1 observasi lalu / T-1)",
+        "suhu_c_lag_2": "Suhu (2 observasi lalu / T-2)",
+        "suhu_c_lag_3": "Suhu (3 observasi lalu / T-3)",
+        "qnh_hpa_lag_1": "Tekanan QNH (1 observasi lalu / T-1)",
+        "qnh_hpa_lag_2": "Tekanan QNH (2 observasi lalu / T-2)",
+        "qnh_hpa_lag_3": "Tekanan QNH (3 observasi lalu / T-3)",
+        "kec_angin_kt_lag_1": "Kecepatan angin (1 observasi lalu / T-1)",
+        "kec_angin_kt_lag_2": "Kecepatan angin (2 observasi lalu / T-2)",
+        "kec_angin_kt_lag_3": "Kecepatan angin (3 observasi lalu / T-3)",
+        "dew_point_c_lag_1": "Titik embun (1 observasi lalu / T-1)",
+        "dew_point_c_lag_2": "Titik embun (2 observasi lalu / T-2)",
+        "dew_point_c_lag_3": "Titik embun (3 observasi lalu / T-3)",
+    }
+
+    contributions = []
+    for feature_name, shap_value in zip(feature_order, contribution_values[:-1]):
+        numeric_value = float(shap_value)
+        observed_value = float(feature_values[feature_name])
+        contributions.append({
+            "feature": feature_name,
+            "label": feature_labels.get(feature_name, feature_name),
+            "value": round(observed_value, 2) if math.isfinite(observed_value) else None,
+            "shap_value": round(numeric_value, 4),
+            "direction": "Menaikkan risiko bahaya" if numeric_value > 0 else "Menurunkan risiko bahaya",
+            "impact": "danger" if numeric_value > 0 else "safe",
+        })
+    contributions.sort(key=lambda item: abs(item["shap_value"]), reverse=True)
+
+    status = "BAHAYA" if is_danger else "AMAN"
+    description = (
+        "Model mendeteksi potensi cuaca ekstrem / badai guntur (Thunderstorm). Tingkatkan kewaspadaan dan lakukan antisipasi operasional penerbangan."
+        if is_danger else
+        "Model tidak mendeteksi potensi cuaca ekstrem pada rangkaian observasi ini. Parameter atmosfer terpantau dalam batas aman dan stabil."
+    )
+
+    history_chart = []
+    for obs in observations:
+        history_chart.append({
+            "label": obs["label"],
+            "time_token": obs["time_token"],
+            "wind_speed_kt": None if math.isnan(obs["kec_angin_kt"]) else round(float(obs["kec_angin_kt"]), 2),
+            "wind_dir_deg": None if math.isnan(obs["arah_angin_deg"]) else round(float(obs["arah_angin_deg"]), 0),
+            "qnh_hpa": None if math.isnan(obs["qnh_hpa"]) else round(float(obs["qnh_hpa"]), 1),
+            "temp_c": None if math.isnan(obs["suhu_c"]) else round(float(obs["suhu_c"]), 1),
+            "dewpoint_c": None if math.isnan(obs["dew_point_c"]) else round(float(obs["dew_point_c"]), 1),
+        })
+
+    return {
+        "status": "success",
+        "model_status": status,
+        "is_danger": is_danger,
+        "danger_probability": round(danger_probability * 100, 2),
+        "confidence_percent": round(confidence * 100, 2),
+        "description": description,
+        "latest_metar": current["raw"],
+        "observations": [{
+            "step": i + 1,
+            "label": obs["label"],
+            "raw": obs["raw"],
+            "time_token": obs["time_token"],
+            "suhu_c": round(obs["suhu_c"], 1) if math.isfinite(obs["suhu_c"]) else None,
+            "dew_point_c": round(obs["dew_point_c"], 1) if math.isfinite(obs["dew_point_c"]) else None,
+            "qnh_hpa": round(obs["qnh_hpa"], 1) if math.isfinite(obs["qnh_hpa"]) else None,
+            "kec_angin_kt": round(obs["kec_angin_kt"], 1) if math.isfinite(obs["kec_angin_kt"]) else None,
+            "arah_angin_deg": round(obs["arah_angin_deg"], 0) if math.isfinite(obs["arah_angin_deg"]) else None,
+            "visibilitas_m": round(obs["visibilitas_m"], 0) if math.isfinite(obs["visibilitas_m"]) else None,
+            "thunderstorm": obs["status_cuaca_sekarang"],
+        } for i, obs in enumerate(observations)],
+        "history_chart": history_chart,
+        "explanation": {
+            "method": "XGBoost TreeSHAP",
+            "base_value": round(float(contribution_values[-1]), 4),
+            "raw_margin": round(float(sum(contribution_values)), 4),
+            "features": contributions,
+        },
+    }
+
+
+def run_lstm_metar_prediction(metar_list):
+    """
+    Run LSTM multi-step forecast (+30m & +1h) on exactly 10 sequential METAR strings.
+    metar_list[0] = T-9 (oldest) ... metar_list[9] = T-0 (latest)
+    """
+    if not isinstance(metar_list, list):
+        return {"status": "error", "error": "Input harus berupa daftar (array) berisi 10 kode METAR."}
+
+    cleaned_metars = [normalize_metar(str(m)) for m in metar_list if str(m).strip()]
+    if len(cleaned_metars) != 10:
+        return {
+            "status": "error",
+            "error": f"Model LSTM memerlukan tepat 10 kode METAR berurutan (T-9 sampai T terkini). Ditemukan {len(cleaned_metars)} data."
+        }
+
+    feature_order = ["suhu_c", "qnh_hpa", "kec_angin_kt", "dew_point_c"]
+    observations = []
+    for idx, raw_metar in enumerate(cleaned_metars):
+        try:
+            parsed = _parse_ews_metar(raw_metar)
+            feat_vals = [parsed.get(f) for f in feature_order]
+            if any(val is None or not math.isfinite(float(val)) for val in feat_vals):
+                return {
+                    "status": "error",
+                    "error": f"Observasi ke-{idx+1} ('{raw_metar[:35]}...') tidak memiliki parameter Suhu/QNH/Angin/Dewpoint yang lengkap."
+                }
+
+            tokens = raw_metar.split()
+            time_token = ""
+            for tok in tokens[1:3]:
+                if tok.endswith("Z") and len(tok) == 7 and tok[:6].isdigit():
+                    time_token = tok
+                    break
+
+            label = f"T-{9 - idx}" if idx < 9 else "T (Terkini)"
+            observations.append({
+                "index": idx,
+                "step": idx + 1,
+                "label": label,
+                "time_token": time_token,
+                "raw": raw_metar,
+                "values": [float(v) for v in feat_vals],
+                "parsed": parsed,
+            })
+        except Exception as e:
+            return {
+                "status": "error",
+                "error": f"Gagal membaca format METAR baris ke-{idx+1} ('{raw_metar[:35]}...'): {str(e)}"
+            }
+
+    sequence_10x4 = [obs["values"] for obs in observations]
+    steps_pred = predict_metar_multistep(sequence_10x4, steps=2)
+    predicted_30m = steps_pred[0]
+    predicted_1h = steps_pred[1]
+
+    latest_item = observations[-1]
+    actual_dict = dict(zip(feature_order, latest_item["values"]))
+
+    deltas_30m = {
+        feat: round(predicted_30m[feat] - actual_dict[feat], 2)
+        for feat in feature_order
+    }
+    deltas_1h = {
+        feat: round(predicted_1h[feat] - actual_dict[feat], 2)
+        for feat in feature_order
+    }
+
+    history_chart = [{
+        "step": obs["step"],
+        "label": obs["label"],
+        "time_token": obs["time_token"],
+        "raw": obs["raw"],
+        "suhu_c": round(obs["parsed"]["suhu_c"], 2),
+        "qnh_hpa": round(obs["parsed"]["qnh_hpa"], 2),
+        "kec_angin_kt": round(obs["parsed"]["kec_angin_kt"], 2),
+        "dew_point_c": round(obs["parsed"]["dew_point_c"], 2),
+    } for obs in observations]
+
+    return {
+        "status": "success",
+        "latest_metar": latest_item["raw"],
+        "latest_time_token": latest_item["time_token"],
+        "features": feature_order,
+        "actual": {k: round(v, 2) for k, v in actual_dict.items()},
+        "predicted_30m": {k: round(v, 2) for k, v in predicted_30m.items()},
+        "predicted_1h": {k: round(v, 2) for k, v in predicted_1h.items()},
+        "deltas_30m": deltas_30m,
+        "deltas_1h": deltas_1h,
+        "history": history_chart,
+        "observations": [{
+            "step": obs["step"],
+            "label": obs["label"],
+            "raw": obs["raw"],
+            "time_token": obs["time_token"],
+            "suhu_c": round(obs["parsed"]["suhu_c"], 1),
+            "qnh_hpa": round(obs["parsed"]["qnh_hpa"], 1),
+            "kec_angin_kt": round(obs["parsed"]["kec_angin_kt"], 1),
+            "dew_point_c": round(obs["parsed"]["dew_point_c"], 1),
+        } for obs in observations],
+    }
+
+
+# ============================================================
+# API ROUTES FOR TOOLS
+# ============================================================
+
+@app.route("/api/tool/predict-xgboost", methods=["POST"])
+def api_tool_predict_xgboost():
+    """Endpoint for XGBoost prediction tool with 4 METAR codes."""
+    try:
+        data = request.get_json(silent=True)
+        if not data:
+            data = request.form
+        metars = data.get("metars")
+        if isinstance(metars, str):
+            metars = [l.strip() for l in metars.splitlines() if l.strip()]
+        result = run_xgboost_metar_prediction(metars or [])
+        status_code = 200 if result.get("status") == "success" else 400
+        return jsonify(result), status_code
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"status": "error", "error": f"Terjadi kesalahan sistem: {str(e)}"}), 500
+
+
+@app.route("/api/tool/predict-lstm", methods=["POST"])
+def api_tool_predict_lstm():
+    """Endpoint for LSTM forecasting tool with 10 METAR codes."""
+    try:
+        data = request.get_json(silent=True)
+        if not data:
+            data = request.form
+        metars = data.get("metars")
+        if isinstance(metars, str):
+            metars = [l.strip() for l in metars.splitlines() if l.strip()]
+        result = run_lstm_metar_prediction(metars or [])
+        status_code = 200 if result.get("status") == "success" else 400
+        return jsonify(result), status_code
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"status": "error", "error": f"Terjadi kesalahan sistem: {str(e)}"}), 500
+
+
+@app.route("/api/tool/sample-data")
+def api_tool_sample_data():
+    """Returns curated preset METAR sequences for instant testing."""
+    return jsonify({
+        "status": "success",
+        "xgboost_normal": [
+            "METAR WARR 290800Z 11013KT CAVOK 31/23 Q1011 NOSIG",
+            "METAR WARR 290830Z 12015KT 9999 FEW020 31/24 Q1011 NOSIG",
+            "METAR WARR 290900Z 11014KT 9999 FEW020 31/24 Q1011 NOSIG",
+            "METAR WARR 290930Z 12014KT 9999 FEW020 30/24 Q1011 NOSIG",
+        ],
+        "xgboost_extreme": [
+            "METAR WARR 290700Z 12010KT 8000 FEW020CB 34/24 Q1010 NOSIG",
+            "METAR WARR 290730Z 14018KT 6000 TS FEW020CB 31/25 Q1008 NOSIG",
+            "METAR WARR 290800Z 28028G45KT 1500 +TSRA FEW015CB 25/24 Q1005 NOSIG",
+            "METAR WARR 290830Z 27022G38KT 2500 TSRA SCT018CB 24/23 Q1006 NOSIG",
+        ],
+        "lstm_sample": [
+            "METAR WARR 290530Z 10013KT CAVOK 32/25 Q1012 NOSIG",
+            "METAR WARR 290600Z 11015KT CAVOK 32/25 Q1012 NOSIG",
+            "METAR WARR 290630Z 13014KT CAVOK 33/24 Q1012 NOSIG",
+            "METAR WARR 290700Z 12014KT CAVOK 33/24 Q1011 NOSIG",
+            "METAR WARR 290730Z 12013KT CAVOK 33/24 Q1011 NOSIG",
+            "METAR WARR 290800Z 11013KT CAVOK 31/23 Q1011 NOSIG",
+            "METAR WARR 290830Z 12015KT 9999 FEW020 31/24 Q1011 NOSIG",
+            "METAR WARR 290900Z 11014KT 9999 FEW020 31/24 Q1011 NOSIG",
+            "METAR WARR 290930Z 12014KT 9999 FEW020 30/24 Q1011 NOSIG",
+            "METAR WARR 291000Z 11013KT 9999 FEW020 29/23 Q1012 NOSIG",
+        ],
+        "lstm_extreme": [
+            "METAR WARR 290530Z 10010KT CAVOK 32/24 Q1012 NOSIG",
+            "METAR WARR 290600Z 11012KT CAVOK 33/24 Q1012 NOSIG",
+            "METAR WARR 290630Z 12013KT CAVOK 33/24 Q1011 NOSIG",
+            "METAR WARR 290700Z 12015KT 9999 FEW020 34/25 Q1010 NOSIG",
+            "METAR WARR 290730Z 13018KT 8000 SCT020CB 33/25 Q1009 NOSIG",
+            "METAR WARR 290800Z 15020KT 6000 TS FEW018CB 31/25 Q1008 NOSIG",
+            "METAR WARR 290830Z 28028G45KT 2000 +TSRA FEW015CB 26/25 Q1005 NOSIG",
+            "METAR WARR 290900Z 27025G40KT 2500 TSRA SCT018CB 25/24 Q1006 NOSIG",
+            "METAR WARR 290930Z 26018KT 4000 -RA SCT020 25/24 Q1008 NOSIG",
+            "METAR WARR 291000Z 25014KT 6000 FEW020 26/24 Q1009 NOSIG",
+        ]
+    })
+
+
+@app.route("/api/tool/live-metars")
+def api_tool_live_metars():
+    """Fetch live METARs from aviation weather or local source for tools."""
+    station = request.args.get("station", "WARR").strip().upper()
+    try:
+        count = int(request.args.get("count", 10))
+    except (ValueError, TypeError):
+        count = 10
+    count = max(1, min(30, count))
+    metars = fetch_tool_live_metars(station=station, count=count)
+    return jsonify({
+        "status": "success",
+        "station": station,
+        "count": len(metars),
+        "metars": metars,
+    })
+
+
+@app.route("/api/tool/generate-simulated")
+def api_tool_generate_simulated():
+    """Generate simulated METAR observations for testing."""
+    station = request.args.get("station", "WARR").strip().upper()
+    mode = request.args.get("mode", "normal").strip().lower()
+    try:
+        count = int(request.args.get("count", 4))
+    except (ValueError, TypeError):
+        count = 4
+    count = max(1, min(24, count))
+    metars = generate_tool_simulated_metars(count=count, mode=mode, station=station)
+    return jsonify({
+        "status": "success",
+        "station": station,
+        "mode": mode,
+        "count": len(metars),
+        "metars": metars,
+    })
+
+
+# ============================================================
+# TOOL PAGES
+# ============================================================
+
+@app.route("/tool/xgboost", methods=["GET", "POST"])
+def tool_xgboost_view():
+    return common_view_context("xgboost_tool.html")
+
+
+@app.route("/tool/lstm", methods=["GET", "POST"])
+def tool_lstm_view():
+    return common_view_context("lstm_tool.html")
+
+
+@app.route("/xgboost")
+def redirect_xgboost():
+    return redirect("/tool/xgboost")
+
+
+@app.route("/lstm")
+def redirect_lstm():
+    return redirect("/tool/lstm")
 
 
 @app.route("/api/metar/<station_code>")
