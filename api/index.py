@@ -2520,7 +2520,7 @@ def calculate_prediction_comparison(period="today", station="WARR", target_date=
         return build_comparison_response_from_records(saved_records, station=station, period=period, source=source_label)
 
     # 2. If empty for requested period (e.g. fresh day or timezone shift), fallback to latest stored records
-    if period in ("today", "yesterday"):
+    if period in ("today", "yesterday") and not target_date:
         all_saved = sheets_handler.get_comparison_records(limit=48, period="all", station=station)
         if all_saved and len(all_saved) > 0:
             source_label = "Google Sheets (Observasi Terbaru)" if sheets_handler.client else "Local Cache (Observasi Terbaru)"

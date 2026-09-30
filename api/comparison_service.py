@@ -723,7 +723,6 @@ class ComparisonService:
         """
         Ambil rekaman harian dari Google Sheets / CSV dan lakukan roll-up akumulator secara murni.
         """
-        records = self.sheets.get_daily_summary_records(station=station, start_date=start_date, end_date=end_date)
         if not records:
             # Fallback jika belum ada di RingkasanEvaluasiHarian: coba kumpulkan langsung dari PredictionComparison
             try:
@@ -994,30 +993,15 @@ class ComparisonService:
             if comp_rec:
                 return comp_rec
 
-        res = self._rollup_daily_summaries(start_date=d_str, end_date=d_str, station=station)
-        if res.get("xgboost_classification", {}).get("total_evaluasi", 0) == 0:
-            latest_summaries = self.sheets.get_daily_summary_records(station=station)
-            if latest_summaries:
-                latest_record = latest_summaries[-1]
-                compiled = self._compile_metrics_from_accumulators(latest_record)
-                compiled["status"] = "success"
-                compiled["metadata"] = {
-                    "station": station,
-                    "start_date": latest_record.get("date", d_str),
-                    "end_date": latest_record.get("date", d_str),
-                    "records_count": int(latest_record.get("total_samples_xgb") or 0),
-                    "source": "Google Sheets (Ringkasan Evaluasi Terakhir)"
-                }
-                return compiled
-        return res
+        return self._rollup_daily_summaries(start_date=d_str, end_date=d_str, station=station)
 
     def get_metrics_monthly_ongoing(self, year: int, month: int, station: str = "WARR") -> Dict[str, Any]:
         """
-        Mengagregasi data harian dari tanggal 1 bulan tersebut sampai tanggal berjalan.
+        Mengagregasi data harian dari tanggal 1 bulan tersebut sampai tanggal berjalan (UTC).
         Cepat & instan (<0.05s).
         """
         start_date = date(year, month, 1)
-        today = date.today()
+        today = datetime.utcnow().date()
 
         if today.year == year and today.month == month:
             end_date = today
@@ -1033,11 +1017,11 @@ class ComparisonService:
 
     def get_metrics_yearly_ongoing(self, year: int, station: str = "WARR") -> Dict[str, Any]:
         """
-        Mengagregasi data harian dari tanggal 1 Januari sampai tanggal berjalan.
+        Mengagregasi data harian dari tanggal 1 Januari sampai tanggal berjalan (UTC).
         Cepat & instan (<0.05s).
         """
         start_date = date(year, 1, 1)
-        today = date.today()
+        today = datetime.utcnow().date()
 
         if today.year == year:
             end_date = today

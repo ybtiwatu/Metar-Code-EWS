@@ -864,14 +864,14 @@
         "Juli", "Agustus", "September", "Oktober", "November", "Desember"
     ];
 
-    let selectedYear = new Date().getFullYear();
-    let selectedMonth = new Date().getMonth() + 1;
+    let selectedYear = new Date().getUTCFullYear();
+    let selectedMonth = new Date().getUTCMonth() + 1;
 
     function switchPeriod(p) {
         currentPeriod = p;
         const now = new Date();
-        selectedYear = now.getFullYear();
-        selectedMonth = now.getMonth() + 1;
+        selectedYear = now.getUTCFullYear();
+        selectedMonth = now.getUTCMonth() + 1;
 
         // Reset month selector when switching to fixed periods
         const monthSelect = document.getElementById('selectCustomMonth');
@@ -896,7 +896,7 @@
         const monthSelect = document.getElementById('selectCustomMonth');
         const yearSelect = document.getElementById('selectCustomYear');
         const m = monthSelect.value ? parseInt(monthSelect.value) : null;
-        const y = yearSelect.value ? parseInt(yearSelect.value) : new Date().getFullYear();
+        const y = yearSelect.value ? parseInt(yearSelect.value) : new Date().getUTCFullYear();
 
         if (m) {
             currentPeriod = 'monthly';
@@ -914,6 +914,9 @@
         currentPeriod = period || 'today';
         options = options || {};
 
+        const now = new Date();
+        const curUtcMonth = now.getUTCMonth() + 1;
+
         const pButtons = {
             today: document.getElementById('btnPeriodToday'),
             yesterday: document.getElementById('btnPeriodYesterday'),
@@ -923,7 +926,7 @@
         };
         for (const k in pButtons) {
             if (pButtons[k]) {
-                const isActive = (currentPeriod === k) && (!options.month || options.month === (new Date().getMonth() + 1));
+                const isActive = (currentPeriod === k) && (!options.month || options.month === curUtcMonth);
                 pButtons[k].classList.toggle('active', isActive);
             }
         }
@@ -941,13 +944,12 @@
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 9000); // Max 9s timeout
 
-        try {
-            // Build synchronized query parameters for both endpoints
+            // Build synchronized query parameters for both endpoints using strict UTC
             const now = new Date();
-            const formatLocalDate = (d) => {
-                const year = d.getFullYear();
-                const month = String(d.getMonth() + 1).padStart(2, '0');
-                const day = String(d.getDate()).padStart(2, '0');
+            const formatUtcDate = (d) => {
+                const year = d.getUTCFullYear();
+                const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+                const day = String(d.getUTCDate()).padStart(2, '0');
                 return `${year}-${month}-${day}`;
             };
 
@@ -956,6 +958,11 @@
             if (options.month) queryParams += `&month=${options.month}`;
             if (options.date) {
                 queryParams += `&date=${options.date}`;
+            } else if (currentPeriod === 'today') {
+                queryParams += `&date=${formatUtcDate(now)}`;
+            } else if (currentPeriod === 'yesterday') {
+                const yDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+                queryParams += `&date=${formatUtcDate(yDate)}`;
             }
 
             let summaryUrl = `/api/comparison/summary?${queryParams}`;
@@ -974,7 +981,7 @@
             } else {
                 const sBadge = document.getElementById('sourceBadge');
                 if (sBadge && (sBadge.textContent === 'Memuat data...' || !sBadge.textContent)) {
-                    sBadge.textContent = 'Observasi Terkini • Google Sheets';
+                    sBadge.textContent = 'Observasi Terkini (UTC) • Google Sheets';
                 }
             }
 
@@ -1018,36 +1025,35 @@
         const meta = s.metadata || {};
         const sourceLabel = meta.source || 'RingkasanEvaluasiHarian';
         const now = new Date();
-        const curYear = now.getFullYear();
-        const curMonth = now.getMonth() + 1;
-        const curDay = now.getDate();
+        const curYear = now.getUTCFullYear();
+        const curMonth = now.getUTCMonth() + 1;
+        const curDay = now.getUTCDate();
 
-        // Human-friendly period badge
+        // Human-friendly period badge in strict UTC
         let periodLabel = '';
         if (currentPeriod === 'today') {
-            periodLabel = `📅 Hari Ini (${curDay} ${MONTH_NAMES_ID[curMonth - 1]} ${curYear})`;
+            periodLabel = `📅 Hari Ini: ${curDay} ${MONTH_NAMES_ID[curMonth - 1]} ${curYear} (UTC)`;
         } else if (currentPeriod === 'yesterday') {
-            const yDate = new Date(now);
-            yDate.setDate(now.getDate() - 1);
-            periodLabel = `⏮️ Kemarin (${yDate.getDate()} ${MONTH_NAMES_ID[yDate.getMonth()]} ${yDate.getFullYear()})`;
+            const yDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+            periodLabel = `⏮️ Kemarin: ${yDate.getUTCDate()} ${MONTH_NAMES_ID[yDate.getUTCMonth()]} ${yDate.getUTCFullYear()} (UTC)`;
         } else if (currentPeriod === 'monthly') {
             const m = options.month || selectedMonth || curMonth;
             const y = options.year || selectedYear || curYear;
             const mName = MONTH_NAMES_ID[m - 1] || `Bulan ${m}`;
             if (m === curMonth && y === curYear) {
-                periodLabel = `🗓️ Bulan Ini: ${mName} ${y} (Sedang Berjalan s/d ${curDay} ${mName})`;
+                periodLabel = `🗓️ Bulan Ini: ${mName} ${y} (Sedang Berjalan s/d ${curDay} ${mName} UTC)`;
             } else {
-                periodLabel = `🗓️ Bulan: ${mName} ${y} (Selesai / Arsip)`;
+                periodLabel = `🗓️ Bulan: ${mName} ${y} (Arsip UTC)`;
             }
         } else if (currentPeriod === 'yearly') {
             const y = options.year || selectedYear || curYear;
             if (y === curYear) {
-                periodLabel = `📈 Tahun Ini: ${y} (Sedang Berjalan s/d ${curDay} ${MONTH_NAMES_ID[curMonth - 1]})`;
+                periodLabel = `📈 Tahun Ini: ${y} (Sedang Berjalan s/d ${curDay} ${MONTH_NAMES_ID[curMonth - 1]} UTC)`;
             } else {
-                periodLabel = `📈 Tahun: ${y} (Penuh / Arsip)`;
+                periodLabel = `📈 Tahun: ${y} (Arsip UTC)`;
             }
         } else {
-            periodLabel = `🗂️ Semua Data Observasi Terhitung`;
+            periodLabel = `🗂️ Semua Data Observasi (UTC)`;
         }
 
         document.getElementById('sourceBadge').textContent = `${periodLabel} • ${sourceLabel}`;
@@ -1691,6 +1697,8 @@
     });
 
     document.addEventListener('DOMContentLoaded', function () {
+        const yearSelect = document.getElementById('selectCustomYear');
+        if (yearSelect) yearSelect.value = String(selectedYear);
         loadComparisonData('today');
     });
 </script>
