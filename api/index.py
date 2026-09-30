@@ -2496,25 +2496,35 @@ def build_comparison_response_from_records(records, station="WARR", period="toda
     }
 
 
-def calculate_prediction_comparison(period="today", station="WARR"):
+def calculate_prediction_comparison(period="today", station="WARR", target_date=None, year=None, month=None):
     """
     Fast, pre-calculated evaluation and comparison between predictions and actual METAR.
     Reads pre-calculated results from Google Sheets 'PredictionComparison' (or fallback CSV).
     Runs instantly (<0.05s) without running heavy ML models during user requests.
+    Supports period ('today', 'yesterday', 'monthly', 'yearly', 'all'), target_date, year, month.
     """
     station = (station or "WARR").strip().upper()
+    limit = 500 if period in ("monthly", "yearly", "all") else 100
 
-    # 1. Try reading from Google Sheets 'PredictionComparison' for requested period
-    saved_records = sheets_handler.get_comparison_records(limit=100, period=period, station=station)
+    # 1. Try reading from Google Sheets 'PredictionComparison' for requested period & date filters
+    saved_records = sheets_handler.get_comparison_records(
+        limit=limit,
+        period=period,
+        station=station,
+        target_date=target_date,
+        year=year,
+        month=month
+    )
     if saved_records and len(saved_records) > 0:
         source_label = "Google Sheets (PredictionComparison)" if sheets_handler.client else "Local Cache (PredictionComparison)"
         return build_comparison_response_from_records(saved_records, station=station, period=period, source=source_label)
 
     # 2. If empty for requested period (e.g. fresh day or timezone shift), fallback to latest stored records
-    all_saved = sheets_handler.get_comparison_records(limit=25, period="all", station=station)
-    if all_saved and len(all_saved) > 0:
-        source_label = "Google Sheets (Observasi Terbaru)" if sheets_handler.client else "Local Cache (Observasi Terbaru)"
-        return build_comparison_response_from_records(all_saved, station=station, period=period, source=source_label)
+    if period in ("today", "yesterday") and not target_date:
+        all_saved = sheets_handler.get_comparison_records(limit=48, period="all", station=station)
+        if all_saved and len(all_saved) > 0:
+            source_label = "Google Sheets (Observasi Terbaru)" if sheets_handler.client else "Local Cache (Observasi Terbaru)"
+            return build_comparison_response_from_records(all_saved, station=station, period=period, source=source_label)
 
     # 3. Clean empty fallback without blocking GET requests with heavy model inferences
     return build_comparison_response_from_records([], station=station, period=period, source="Google Sheets (Belum ada data)")
@@ -2530,8 +2540,17 @@ def comparison_view():
 def api_comparison_data():
     period = request.args.get("period", "today").strip().lower()
     station = request.args.get("station", "WARR").strip().upper()
+    date_str = request.args.get("date", "").strip()
+    year = request.args.get("year", type=int)
+    month = request.args.get("month", type=int)
     try:
-        data = calculate_prediction_comparison(period=period, station=station)
+        data = calculate_prediction_comparison(
+            period=period,
+            station=station,
+            target_date=date_str or None,
+            year=year,
+            month=month
+        )
         return jsonify(data)
     except Exception as e:
         traceback.print_exc()
@@ -2542,8 +2561,17 @@ def api_comparison_data():
 def api_comparison_export():
     period = request.args.get("period", "today").strip().lower()
     station = request.args.get("station", "WARR").strip().upper()
+    date_str = request.args.get("date", "").strip()
+    year = request.args.get("year", type=int)
+    month = request.args.get("month", type=int)
     try:
-        data = calculate_prediction_comparison(period=period, station=station)
+        data = calculate_prediction_comparison(
+            period=period,
+            station=station,
+            target_date=date_str or None,
+            year=year,
+            month=month
+        )
         rows_to_export = []
         xgb_map = {r["time"]: r for r in data["xgboost"]["rows"]}
         for r in data["lstm"]["rows"]:
@@ -2600,18 +2628,22 @@ def api_comparison_summary():
     now = datetime.utcnow()
 
     try:
+        date_str = request.args.get("date", "").strip()
+        custom_date = None
+        if date_str:
+            try:
+                custom_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+            except Exception:
+                custom_date = None
+
         if period == "today":
-            target_date = now.date()
+            target_date = custom_date or now.date()
             res = comparison_service.get_metrics_daily(target_date, station=station)
         elif period == "yesterday":
-            target_date = now.date() - timedelta(days=1)
+            target_date = custom_date or (now.date() - timedelta(days=1))
             res = comparison_service.get_metrics_daily(target_date, station=station)
         elif period == "daily":
-            date_str = request.args.get("date", "").strip()
-            if date_str:
-                target_date = datetime.strptime(date_str, "%Y-%m-%d").date()
-            else:
-                target_date = now.date()
+            target_date = custom_date or now.date()
             res = comparison_service.get_metrics_daily(target_date, station=station)
         elif period in ("monthly", "mtd"):
             year = int(request.args.get("year", now.year))
@@ -2620,8 +2652,11 @@ def api_comparison_summary():
         elif period in ("yearly", "ytd"):
             year = int(request.args.get("year", now.year))
             res = comparison_service.get_metrics_yearly_ongoing(year=year, station=station)
+        elif period == "all":
+            res = comparison_service.get_metrics_all(station=station)
         else:
-            res = comparison_service.get_metrics_daily(now.date(), station=station)
+            target_date = custom_date or now.date()
+            res = comparison_service.get_metrics_daily(target_date, station=station)
 
         return jsonify(res)
     except Exception as e:

@@ -794,10 +794,19 @@ class GoogleSheetHandler:
 
         return cleaned
 
-    def get_comparison_records(self, limit: int = 100, period: str = "today", station: str = "WARR", bypass_cache: bool = False) -> list:
+    def get_comparison_records(
+        self,
+        limit: int = 100,
+        period: str = "today",
+        station: str = "WARR",
+        target_date: str = None,
+        year: int = None,
+        month: int = None,
+        bypass_cache: bool = False
+    ) -> list:
         """
         Fetch pre-calculated comparison records from Google Sheets (or fallback CSV)
-        with fast in-memory caching.
+        with fast in-memory caching and period/date/month filtering.
         """
         station = (station or "WARR").strip().upper()
         now = datetime.utcnow()
@@ -811,10 +820,21 @@ class GoogleSheetHandler:
                 try:
                     records = worksheet.get_all_records()
                     if records:
-                        print(f"[SHEETS] Read {len(records)} comparison records from Google Sheets", file=sys.stderr)
                         return records
                 except Exception as e:
-                    print(f"[SHEETS] Error reading PredictionComparison: {e}", file=sys.stderr)
+                    print(f"[SHEETS] Error reading PredictionComparison via get_all_records: {e}", file=sys.stderr)
+                    try:
+                        vals = worksheet.get_all_values()
+                        if vals and len(vals) > 1:
+                            headers = [h.strip() for h in vals[0] if h.strip()]
+                            safe_recs = []
+                            for row in vals[1:]:
+                                if any(c.strip() for c in row):
+                                    safe_recs.append({headers[i]: row[i] if i < len(row) else "" for i in range(len(headers))})
+                            if safe_recs:
+                                return safe_recs
+                    except Exception as inner_e:
+                        print(f"[SHEETS] Safe get_all_values for comparison failed: {inner_e}", file=sys.stderr)
 
             # 2. Fallback to local/temporary CSV
             csv_path = self._get_comparison_csv_path()
@@ -822,7 +842,6 @@ class GoogleSheetHandler:
                 try:
                     df = pd.read_csv(csv_path)
                     if not df.empty:
-                        print(f"[SHEETS] Read {len(df)} comparison records from fallback CSV", file=sys.stderr)
                         return df.to_dict(orient="records")
                 except Exception as e:
                     print(f"[SHEETS] Error reading comparison fallback CSV: {e}", file=sys.stderr)
@@ -840,31 +859,72 @@ class GoogleSheetHandler:
             if not r.get("station") or str(r.get("station")).strip().upper() == station
         ]
 
-        # Filter by period
+        # Parse target date if passed as string
+        t_date = None
+        if target_date:
+            try:
+                t_date = datetime.strptime(str(target_date).strip()[:10], "%Y-%m-%d").date()
+            except Exception:
+                pass
+
+        if t_date is None:
+            if period == "today":
+                t_date = today_date
+            elif period == "yesterday":
+                t_date = yesterday_date
+
+        # Filter by period, date, month, or year
         filtered = []
         for r in station_records:
             logged = str(r.get("logged_at_utc", ""))
+            time_token = str(r.get("time_token", ""))
             r_date = None
-            if logged:
+            if logged and len(logged) >= 10:
                 try:
-                    r_date = pd.to_datetime(logged, errors="coerce").date()
+                    r_date = pd.to_datetime(logged[:10], errors="coerce").date()
                 except Exception:
                     pass
 
-            if period == "today":
-                if r_date and r_date == today_date:
+            if r_date is None and len(time_token) >= 6:
+                try:
+                    d_num = int(time_token[:2])
+                    if t_date and d_num == t_date.day:
+                        r_date = t_date
+                    elif year and month:
+                        r_date = date(year, month, d_num)
+                except Exception:
+                    pass
+
+            if period in ("today", "yesterday", "daily"):
+                if r_date and t_date:
+                    if r_date == t_date:
+                        filtered.append(r)
+                elif not t_date:
                     filtered.append(r)
-            elif period == "yesterday":
-                if r_date and r_date == yesterday_date:
+            elif period in ("monthly", "mtd"):
+                target_y = year or (t_date.year if t_date else now.year)
+                target_m = month or (t_date.month if t_date else now.month)
+                if r_date:
+                    if r_date.year == target_y and r_date.month == target_m:
+                        filtered.append(r)
+                else:
+                    filtered.append(r)
+            elif period in ("yearly", "ytd"):
+                target_y = year or now.year
+                if r_date:
+                    if r_date.year == target_y:
+                        filtered.append(r)
+                else:
                     filtered.append(r)
             else:
+                # 'all'
                 filtered.append(r)
 
         # Fallback if filtered is empty (e.g. fresh day or timezone shift)
-        if not filtered and station_records:
+        if not filtered and period in ("today", "yesterday") and not target_date and station_records:
             filtered = station_records[-limit:]
 
-        return filtered[-limit:]
+        return filtered[-limit:] if (limit and len(filtered) > limit) else filtered
 
     # =========================================================================
     # RINGKASAN EVALUASI HARIAN (DAILY ROLL-UP ACCUMULATOR)

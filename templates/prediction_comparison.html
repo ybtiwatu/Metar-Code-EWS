@@ -9,6 +9,259 @@
 
 {% block nav_active_comparison %}active{% endblock %}
 
+{% block head %}
+<style>
+    /* Closeup Modal Styles */
+    .closeup-modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.68);
+        backdrop-filter: blur(5px);
+        -webkit-backdrop-filter: blur(5px);
+        z-index: 10000;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.25s ease;
+    }
+    .closeup-modal-overlay.active {
+        opacity: 1;
+        pointer-events: auto;
+    }
+    .closeup-modal {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%) scale(0.95);
+        width: 92%;
+        max-width: 860px;
+        max-height: 90vh;
+        background: var(--bg-card, #ffffff);
+        border: 1px solid var(--border-color, #e2e8f0);
+        border-radius: 16px;
+        box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.4);
+        z-index: 10001;
+        display: flex;
+        flex-direction: column;
+        opacity: 0;
+        pointer-events: none;
+        transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+        overflow: hidden;
+    }
+    .closeup-modal.active {
+        opacity: 1;
+        pointer-events: auto;
+        transform: translate(-50%, -50%) scale(1);
+    }
+    .closeup-modal-header {
+        padding: 16px 20px;
+        border-bottom: 1px solid var(--border-color, #e2e8f0);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background: var(--bg-hover, rgba(248, 250, 252, 0.8));
+    }
+    .closeup-title-wrap {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+    .closeup-icon {
+        font-size: 1.4rem;
+        width: 40px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(139, 92, 246, 0.15);
+        border-radius: 10px;
+        color: #8b5cf6;
+    }
+    .closeup-modal-title {
+        margin: 0;
+        font-size: 1.15rem;
+        font-weight: 700;
+        color: var(--text-primary);
+    }
+    .closeup-modal-subtitle {
+        margin: 2px 0 0;
+        font-size: 0.8rem;
+        color: var(--text-secondary);
+    }
+    .closeup-modal-close {
+        background: none;
+        border: none;
+        font-size: 1.4rem;
+        cursor: pointer;
+        color: var(--text-muted);
+        padding: 4px 8px;
+        border-radius: 8px;
+        transition: background 0.15s;
+    }
+    .closeup-modal-close:hover {
+        background: rgba(0, 0, 0, 0.08);
+        color: var(--text-primary);
+    }
+    .closeup-modal-body {
+        padding: 20px;
+        overflow-y: auto;
+        max-height: calc(90vh - 140px);
+    }
+    .closeup-raw-card {
+        background: #0f172a;
+        color: #f8fafc;
+        border-radius: 12px;
+        padding: 16px 18px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        margin-bottom: 18px;
+    }
+    .closeup-raw-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        color: #94a3b8;
+        margin-bottom: 8px;
+    }
+    .closeup-raw-code {
+        font-family: 'JetBrains Mono', 'Courier New', monospace;
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: #38bdf8;
+        line-height: 1.5;
+        word-break: break-all;
+    }
+    .closeup-meta-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 12px;
+        padding-top: 10px;
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .closeup-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 0.75rem;
+        padding: 3px 9px;
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.08);
+        color: #e2e8f0;
+    }
+    .closeup-section-card {
+        background: var(--bg-card, #ffffff);
+        border: 1px solid var(--border-color, #e2e8f0);
+        border-radius: 12px;
+        padding: 16px;
+    }
+    .closeup-card-title {
+        font-size: 0.92rem;
+        font-weight: 700;
+        margin-bottom: 14px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--text-primary);
+    }
+    .closeup-lstm-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+    }
+    .closeup-param-box {
+        background: var(--bg-hover, #f8fafc);
+        border: 1px solid var(--border-color, #e2e8f0);
+        border-radius: 8px;
+        padding: 10px 12px;
+    }
+    .closeup-param-name {
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: var(--text-secondary);
+        margin-bottom: 4px;
+    }
+    .closeup-param-val {
+        font-size: 1rem;
+        font-weight: 700;
+        color: var(--text-primary);
+    }
+    .closeup-param-sub {
+        font-size: 0.72rem;
+        margin-top: 3px;
+    }
+    .closeup-modal-footer {
+        padding: 14px 20px;
+        border-top: 1px solid var(--border-color, #e2e8f0);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background: var(--bg-hover, rgba(248, 250, 252, 0.8));
+    }
+    .closeup-nav-btns {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .metar-code-chip {
+        display: inline-block;
+        font-family: 'JetBrains Mono', 'Courier New', monospace;
+        font-size: 0.8rem;
+        font-weight: 600;
+        padding: 3px 8px;
+        border-radius: 6px;
+        background: rgba(139, 92, 246, 0.08);
+        border: 1px solid rgba(139, 92, 246, 0.25);
+        color: #7c3aed;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        max-width: 280px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        vertical-align: middle;
+    }
+    .metar-code-chip:hover {
+        background: rgba(139, 92, 246, 0.18);
+        border-color: #8b5cf6;
+        transform: translateY(-1px);
+        box-shadow: 0 2px 5px rgba(139, 92, 246, 0.2);
+    }
+    .cursor-pointer {
+        cursor: pointer;
+    }
+    .closeup-grid-2col {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 16px;
+    }
+    @media (min-width: 768px) {
+        .closeup-grid-2col {
+            grid-template-columns: 1fr 1fr;
+        }
+    }
+    .closeup-prob-bar-bg {
+        height: 8px;
+        background: rgba(0, 0, 0, 0.08);
+        border-radius: 4px;
+        overflow: hidden;
+        margin-top: 6px;
+    }
+    .closeup-prob-bar-fill {
+        height: 100%;
+        border-radius: 4px;
+        transition: width 0.3s ease;
+    }
+    .btn-xs {
+        padding: 3px 8px;
+        font-size: 0.75rem;
+        border-radius: 5px;
+        line-height: 1.2;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="tool-page-container fade-in">
     <!-- Header Page -->
@@ -365,6 +618,7 @@
                                 <th>Kondisi Aktual</th>
                                 <th>Fenomena Terdeteksi</th>
                                 <th>Evaluasi Kesesuaian</th>
+                                <th>Aksi</th>
                             </tr>
                         </thead>
                         <tbody id="xgbTableBody">
@@ -449,10 +703,12 @@
                             <tr>
                                 <th>No</th>
                                 <th>Waktu Target</th>
+                                <th>Kode METAR Masuk</th>
                                 <th>Suhu (Aktual / Pred / Err)</th>
                                 <th>QNH (Aktual / Pred / Err)</th>
                                 <th>Angin (Aktual / Pred / Err)</th>
                                 <th>Dew Point (Aktual / Pred / Err)</th>
+                                <th>Aksi</th>
                             </tr>
                         </thead>
                         <tbody id="lstmDetailTableBody">
@@ -486,6 +742,7 @@
                                 <th>Suhu (Akt / Pred)</th>
                                 <th>QNH (Akt / Pred)</th>
                                 <th>Angin (Akt / Pred)</th>
+                                <th>Aksi</th>
                             </tr>
                         </thead>
                         <tbody id="combinedTableBody">
@@ -493,6 +750,43 @@
                         </tbody>
                     </table>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Closeup Inspection Modal Component -->
+    <div id="closeupModalOverlay" class="closeup-modal-overlay" onclick="closeCloseupModal()"></div>
+    <div id="closeupModal" class="closeup-modal" role="dialog" aria-modal="true" aria-labelledby="closeupModalTitle">
+        <div class="closeup-modal-header">
+            <div class="closeup-title-wrap">
+                <div class="closeup-icon">🔍</div>
+                <div>
+                    <h3 class="closeup-modal-title" id="closeupModalTitle">Detail Closeup Observasi METAR</h3>
+                    <p class="closeup-modal-subtitle" id="closeupModalSubtitle">Observasi Target: --</p>
+                </div>
+            </div>
+            <button type="button" class="closeup-modal-close" onclick="closeCloseupModal()" title="Tutup (Esc)">✕</button>
+        </div>
+        <div class="closeup-modal-body" id="closeupModalBody">
+            <!-- Populated dynamically -->
+        </div>
+        <div class="closeup-modal-footer">
+            <div class="closeup-nav-btns">
+                <button type="button" class="btn btn-sm btn-outline" id="closeupPrevBtn" onclick="prevCloseupRow()" title="Observasi Sebelumnya (Arrow Left)">
+                    ◀ Sebelumnya
+                </button>
+                <button type="button" class="btn btn-sm btn-outline" id="closeupNextBtn" onclick="nextCloseupRow()" title="Observasi Berikutnya (Arrow Right)">
+                    Berikutnya ▶
+                </button>
+                <span id="closeupIndexIndicator" style="font-size: 0.8rem; color: var(--text-muted); margin-left: 8px;">--</span>
+            </div>
+            <div class="flex items-center gap-xs">
+                <button type="button" class="btn btn-sm btn-outline" id="closeupCopyBtn" onclick="copyCloseupMetar()" title="Salin Kode METAR">
+                    📋 Salin METAR
+                </button>
+                <button type="button" class="btn btn-sm btn-primary" onclick="closeCloseupModal()">
+                    Tutup
+                </button>
             </div>
         </div>
     </div>
@@ -589,7 +883,13 @@
             yearSelect.value = String(selectedYear);
         }
 
-        loadComparisonData(currentPeriod);
+        if (p === 'monthly') {
+            loadComparisonData('monthly', { year: selectedYear, month: selectedMonth });
+        } else if (p === 'yearly') {
+            loadComparisonData('yearly', { year: selectedYear });
+        } else {
+            loadComparisonData(currentPeriod);
+        }
     }
 
     function onCustomMonthYearChange() {
@@ -642,13 +942,30 @@
         const timeoutId = setTimeout(() => controller.abort(), 9000); // Max 9s timeout
 
         try {
-            // Build API URL
-            let summaryUrl = `/api/comparison/summary?period=${currentPeriod}&station=WARR`;
-            if (options.year) summaryUrl += `&year=${options.year}`;
-            if (options.month) summaryUrl += `&month=${options.month}`;
+            // Build synchronized query parameters for both endpoints
+            const now = new Date();
+            const formatLocalDate = (d) => {
+                const year = d.getFullYear();
+                const month = String(d.getMonth() + 1).padStart(2, '0');
+                const day = String(d.getDate()).padStart(2, '0');
+                return `${year}-${month}-${day}`;
+            };
 
-            const detailPeriod = (currentPeriod === 'monthly' || currentPeriod === 'yearly') ? 'today' : currentPeriod;
-            const detailUrl = `/api/comparison/data?period=${detailPeriod}&station=WARR`;
+            let queryParams = `period=${currentPeriod}&station=WARR`;
+            if (options.year) queryParams += `&year=${options.year}`;
+            if (options.month) queryParams += `&month=${options.month}`;
+            if (options.date) {
+                queryParams += `&date=${options.date}`;
+            } else if (currentPeriod === 'today') {
+                queryParams += `&date=${formatLocalDate(now)}`;
+            } else if (currentPeriod === 'yesterday') {
+                const yDate = new Date(now);
+                yDate.setDate(now.getDate() - 1);
+                queryParams += `&date=${formatLocalDate(yDate)}`;
+            }
+
+            let summaryUrl = `/api/comparison/summary?${queryParams}`;
+            let detailUrl = `/api/comparison/data?${queryParams}`;
 
             // Run concurrent fast queries
             const [summaryResp, detailResp] = await Promise.allSettled([
@@ -896,16 +1213,20 @@
         if (!tbody) return;
         tbody.innerHTML = '';
         if (!xgb.rows || xgb.rows.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:20px;">Belum cukup data observasi untuk evaluasi XGBoost (minimal 4 data).</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:20px;">Belum cukup data observasi untuk evaluasi XGBoost (minimal 4 data).</td></tr>';
             return;
         }
 
-        xgb.rows.forEach(r => {
+        xgb.rows.forEach((r, idx) => {
             const tr = document.createElement('tr');
             tr.innerHTML = `
                 <td>${r.step}</td>
                 <td><strong>${r.time}</strong></td>
-                <td><code style="font-family:'JetBrains Mono',monospace; font-size:0.8rem;">${r.metar}</code></td>
+                <td>
+                    <code class="metar-code-chip cursor-pointer" onclick="openCloseupModal(${idx})" title="Klik untuk closeup observasi">
+                        ${r.metar}
+                    </code>
+                </td>
                 <td>
                     <span class="badge ${r.pred_status === 'BAHAYA' ? 'badge-danger' : 'badge-success'}">
                         ${r.pred_status} (${r.confidence}%)
@@ -923,6 +1244,11 @@
                         ${r.match_label}
                     </span>
                 </td>
+                <td style="white-space:nowrap;">
+                    <button type="button" class="btn btn-xs btn-outline" onclick="openCloseupModal(${idx})" title="Lihat detail closeup observasi" style="border-color:#8b5cf6; color:#8b5cf6; font-weight:600;">
+                        🔍 Closeup
+                    </button>
+                </td>
             `;
             tbody.appendChild(tr);
         });
@@ -933,15 +1259,20 @@
         if (!detailBody) return;
         detailBody.innerHTML = '';
         if (!lstm.rows || lstm.rows.length === 0) {
-            detailBody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:20px;">Belum cukup data observasi untuk evaluasi LSTM (minimal 11 data berurutan).</td></tr>';
+            detailBody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:20px;">Belum cukup data observasi untuk evaluasi LSTM (minimal 11 data berurutan).</td></tr>';
             return;
         }
 
-        lstm.rows.forEach(r => {
+        lstm.rows.forEach((r, idx) => {
             const tr = document.createElement('tr');
             tr.innerHTML = `
                 <td>${r.step}</td>
                 <td><strong>${r.target_time}</strong></td>
+                <td>
+                    <code class="metar-code-chip cursor-pointer" onclick="openCloseupModal(${idx})" title="Klik untuk closeup observasi">
+                        ${r.target_metar || r.target_time}
+                    </code>
+                </td>
                 <td>
                     ${r.actual.suhu_c} °C vs <strong style="color:#fb923c;">${r.predicted_30m.suhu_c} °C</strong>
                     <small class="text-muted">(+30m: Δ ${r.error_30m.suhu_c})</small>
@@ -961,6 +1292,11 @@
                     ${r.actual.dew_point_c} °C vs <strong style="color:#06b6d4;">${r.predicted_30m.dew_point_c} °C</strong>
                     <small class="text-muted">(+30m: Δ ${r.error_30m.dew_point_c})</small>
                     ${r.predicted_1h && r.predicted_1h.dew_point_c !== null ? `<br><span style="color:#a855f7; font-size:0.75rem;">+60m: <strong>${r.predicted_1h.dew_point_c} °C</strong> (Δ ${r.error_1h.dew_point_c})</span>` : ''}
+                </td>
+                <td style="white-space:nowrap;">
+                    <button type="button" class="btn btn-xs btn-outline" onclick="openCloseupModal(${idx})" title="Lihat detail closeup observasi" style="border-color:#8b5cf6; color:#8b5cf6; font-weight:600;">
+                        🔍 Closeup
+                    </button>
                 </td>
             `;
             detailBody.appendChild(tr);
@@ -1071,16 +1407,20 @@
         }
 
         if (!lstm.rows || lstm.rows.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding:20px;">Belum cukup data gabungan untuk dievaluasi.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:20px;">Belum cukup data gabungan untuk dievaluasi.</td></tr>';
             return;
         }
 
-        lstm.rows.forEach(r => {
+        lstm.rows.forEach((r, idx) => {
             const xItem = xgbMap[r.target_time] || {};
             const tr = document.createElement('tr');
             tr.innerHTML = `
                 <td><strong>${r.target_time}</strong></td>
-                <td><code style="font-family:'JetBrains Mono',monospace; font-size:0.75rem;">${r.target_metar}</code></td>
+                <td>
+                    <code class="metar-code-chip cursor-pointer" onclick="openCloseupModal(${idx})" title="Klik untuk closeup observasi">
+                        ${r.target_metar || r.target_time}
+                    </code>
+                </td>
                 <td>
                     <span class="badge ${xItem.pred_status === 'BAHAYA' ? 'badge-danger' : 'badge-success'}">
                         ${xItem.pred_status || 'N/A'}
@@ -1099,10 +1439,257 @@
                 <td>${r.actual.suhu_c} / <strong style="color:#fb923c;">${r.predicted_30m.suhu_c}</strong></td>
                 <td>${r.actual.qnh_hpa} / <strong style="color:#38bdf8;">${r.predicted_30m.qnh_hpa}</strong></td>
                 <td>${r.actual.kec_angin_kt} / <strong style="color:#14b8a6;">${r.predicted_30m.kec_angin_kt}</strong></td>
+                <td style="white-space:nowrap;">
+                    <button type="button" class="btn btn-xs btn-outline" onclick="openCloseupModal(${idx})" title="Lihat detail closeup observasi" style="border-color:#8b5cf6; color:#8b5cf6; font-weight:600;">
+                        🔍 Closeup
+                    </button>
+                </td>
             `;
             tbody.appendChild(tr);
         });
     }
+
+    /* =========================================================================
+       CLOSEUP INSPECTION MODAL CONTROLLER
+       ========================================================================= */
+    let currentCloseupIdx = 0;
+    let activeCloseupMetar = '';
+
+    function openCloseupModal(idx) {
+        currentCloseupIdx = typeof idx === 'number' ? idx : 0;
+        renderCloseupModalContent(currentCloseupIdx);
+        const modal = document.getElementById('closeupModal');
+        const overlay = document.getElementById('closeupModalOverlay');
+        if (modal) modal.classList.add('active');
+        if (overlay) overlay.classList.add('active');
+        document.body.style.overflow = 'hidden';
+    }
+
+    function closeCloseupModal() {
+        const modal = document.getElementById('closeupModal');
+        const overlay = document.getElementById('closeupModalOverlay');
+        if (modal) modal.classList.remove('active');
+        if (overlay) overlay.classList.remove('active');
+        document.body.style.overflow = '';
+    }
+
+    function prevCloseupRow() {
+        if (currentCloseupIdx > 0) {
+            currentCloseupIdx--;
+            renderCloseupModalContent(currentCloseupIdx);
+        }
+    }
+
+    function nextCloseupRow() {
+        const total = Math.max((comparisonData?.xgboost?.rows?.length || 0), (comparisonData?.lstm?.rows?.length || 0));
+        if (currentCloseupIdx < total - 1) {
+            currentCloseupIdx++;
+            renderCloseupModalContent(currentCloseupIdx);
+        }
+    }
+
+    function copyCloseupMetar() {
+        if (!activeCloseupMetar) return;
+        navigator.clipboard.writeText(activeCloseupMetar).then(() => {
+            const btn = document.getElementById('closeupCopyBtn');
+            if (btn) {
+                const orig = btn.innerHTML;
+                btn.innerHTML = '✅ Tersalin!';
+                setTimeout(() => { btn.innerHTML = orig; }, 1500);
+            }
+        }).catch(err => {
+            console.warn('Clipboard write failed:', err);
+        });
+    }
+
+    function renderCloseupModalContent(idx) {
+        if (!comparisonData) return;
+        const xgbRows = comparisonData.xgboost?.rows || [];
+        const lstmRows = comparisonData.lstm?.rows || [];
+        const totalRows = Math.max(xgbRows.length, lstmRows.length);
+
+        if (idx < 0) idx = 0;
+        if (idx >= totalRows) idx = Math.max(0, totalRows - 1);
+        currentCloseupIdx = idx;
+
+        const xgb = xgbRows[idx] || null;
+        const lstm = lstmRows[idx] || null;
+
+        const targetTime = (xgb && xgb.time) || (lstm && lstm.target_time) || '--';
+        const metarCode = (xgb && xgb.metar) || (lstm && lstm.target_metar) || 'N/A';
+        activeCloseupMetar = metarCode;
+
+        // Subtitle & Navigation state
+        const sub = document.getElementById('closeupModalSubtitle');
+        if (sub) {
+            sub.textContent = `Waktu Target: ${targetTime} • Stasiun Juanda Surabaya (WARR) • No. Observasi #${idx + 1}`;
+        }
+        const ind = document.getElementById('closeupIndexIndicator');
+        if (ind) {
+            ind.textContent = totalRows > 0 ? `${idx + 1} dari ${totalRows}` : '0 observasi';
+        }
+        const prevBtn = document.getElementById('closeupPrevBtn');
+        const nextBtn = document.getElementById('closeupNextBtn');
+        if (prevBtn) prevBtn.disabled = (idx <= 0);
+        if (nextBtn) nextBtn.disabled = (idx >= totalRows - 1);
+
+        const body = document.getElementById('closeupModalBody');
+        if (!body) return;
+
+        // Colors & labels for XGB
+        const isXgbDanger = xgb && xgb.pred_status === 'BAHAYA';
+        const isActDanger = xgb && xgb.actual_status === 'BAHAYA';
+        const probVal = xgb ? xgb.danger_probability : 0;
+        const probColor = probVal >= 65 ? '#dc2626' : (probVal >= 35 ? '#d97706' : '#059669');
+
+        body.innerHTML = `
+            <!-- Raw METAR Card -->
+            <div class="closeup-raw-card">
+                <div class="closeup-raw-header">
+                    <span>📡 KODE METAR ASLI OBSERVASI MASUK</span>
+                    <button type="button" class="btn btn-xs btn-outline" onclick="copyCloseupMetar()" style="color:#38bdf8; border-color:#38bdf8; padding:2px 8px; font-size:0.7rem;">
+                        📋 Salin
+                    </button>
+                </div>
+                <div class="closeup-raw-code">${metarCode}</div>
+                <div class="closeup-meta-chips">
+                    <span class="closeup-chip">🕒 Waktu: <strong>${targetTime}</strong></span>
+                    <span class="closeup-chip">🏷️ Kondisi Aktual: <strong style="color:${isActDanger ? '#f87171' : '#4ade80'}">${xgb ? xgb.actual_status : 'N/A'}</strong></span>
+                    <span class="closeup-chip">⚡ Fenomena: <strong>${(xgb && xgb.actual_phenomena) ? xgb.actual_phenomena : 'Normal'}</strong></span>
+                    <span class="closeup-chip">🎯 Hasil Evaluasi: <strong>${xgb ? xgb.match_label : 'N/A'}</strong></span>
+                </div>
+            </div>
+
+            <!-- Two-Column Grid: XGBoost vs LSTM Breakdown -->
+            <div class="closeup-grid-2col">
+                <!-- Card 1: XGBoost Classification -->
+                <div class="closeup-section-card" style="border-top: 3px solid #f59e0b;">
+                    <div class="closeup-card-title">
+                        <span style="font-size:1.15rem;">⚡</span>
+                        <span>Evaluasi Deteksi Dini Bahaya (XGBoost)</span>
+                    </div>
+
+                    ${xgb ? `
+                    <div style="display:flex; flex-direction:column; gap:12px;">
+                        <div class="flex justify-between items-center pb-xs" style="border-bottom: 1px solid var(--border-color);">
+                            <span style="font-size:0.85rem; color:var(--text-secondary);">Prediksi Status Model:</span>
+                            <span class="badge ${isXgbDanger ? 'badge-danger' : 'badge-success'}" style="font-size:0.85rem; font-weight:700;">
+                                ${xgb.pred_status} (${xgb.confidence}% Conf)
+                            </span>
+                        </div>
+
+                        <div>
+                            <div class="flex justify-between items-center" style="font-size:0.82rem;">
+                                <span style="color:var(--text-secondary);">Probabilitas Bahaya:</span>
+                                <strong style="color:${probColor}; font-size:0.95rem;">${probVal}%</strong>
+                            </div>
+                            <div class="closeup-prob-bar-bg">
+                                <div class="closeup-prob-bar-fill" style="width:${Math.min(100, Math.max(3, probVal))}%; background:${probColor};"></div>
+                            </div>
+                            <div class="flex justify-between" style="font-size:0.7rem; color:var(--text-muted); margin-top:3px;">
+                                <span>Aman (<35%)</span>
+                                <span>Waspada (35-65%)</span>
+                                <span>Bahaya (>65%)</span>
+                            </div>
+                        </div>
+
+                        <div class="flex justify-between items-center py-xs" style="border-bottom: 1px solid var(--border-color);">
+                            <span style="font-size:0.85rem; color:var(--text-secondary);">Kondisi Aktual METAR:</span>
+                            <span class="badge ${isActDanger ? 'badge-danger' : 'badge-outline'}" style="font-size:0.85rem; font-weight:700;">
+                                ${xgb.actual_status}
+                            </span>
+                        </div>
+
+                        <div class="flex justify-between items-center py-xs" style="border-bottom: 1px solid var(--border-color);">
+                            <span style="font-size:0.85rem; color:var(--text-secondary);">Fenomena Terdeteksi:</span>
+                            <span style="font-size:0.85rem; font-weight:600; color:var(--text-primary);">${xgb.actual_phenomena || 'Kondisi Normal'}</span>
+                        </div>
+
+                        <div class="flex justify-between items-center pt-xs">
+                            <span style="font-size:0.85rem; color:var(--text-secondary);">Kesesuaian Deteksi:</span>
+                            <span class="badge badge-${xgb.match_badge}" style="font-weight:700;">
+                                ${xgb.match_label}
+                            </span>
+                        </div>
+                    </div>
+                    ` : '<p class="text-muted" style="text-align:center; padding:20px;">Data XGBoost tidak tersedia untuk observasi ini.</p>'}
+                </div>
+
+                <!-- Card 2: LSTM Multi-Step Parameters -->
+                <div class="closeup-section-card" style="border-top: 3px solid #8b5cf6;">
+                    <div class="closeup-card-title">
+                        <span style="font-size:1.15rem;">📈</span>
+                        <span>Evaluasi Parameter Forecasting (LSTM)</span>
+                    </div>
+
+                    ${lstm ? `
+                    <div class="closeup-lstm-grid">
+                        <!-- Suhu -->
+                        <div class="closeup-param-box">
+                            <div class="closeup-param-name">🌡️ SUHU UDARA</div>
+                            <div class="closeup-param-val" style="color:#ef4444;">
+                                ${lstm.actual.suhu_c !== null ? lstm.actual.suhu_c : '--'} °C
+                            </div>
+                            <div class="closeup-param-sub" style="color:var(--text-secondary);">
+                                Pred +30m: <strong style="color:#fb923c;">${lstm.predicted_30m.suhu_c} °C</strong> (Δ ${lstm.error_30m.suhu_c})
+                                ${lstm.predicted_1h && lstm.predicted_1h.suhu_c !== null ? `<br>Pred +60m: <strong style="color:#8b5cf6;">${lstm.predicted_1h.suhu_c} °C</strong> (Δ ${lstm.error_1h.suhu_c})` : ''}
+                            </div>
+                        </div>
+
+                        <!-- Tekanan QNH -->
+                        <div class="closeup-param-box">
+                            <div class="closeup-param-name">📉 TEKANAN QNH</div>
+                            <div class="closeup-param-val" style="color:#2563eb;">
+                                ${lstm.actual.qnh_hpa !== null ? lstm.actual.qnh_hpa : '--'} hPa
+                            </div>
+                            <div class="closeup-param-sub" style="color:var(--text-secondary);">
+                                Pred +30m: <strong style="color:#38bdf8;">${lstm.predicted_30m.qnh_hpa} hPa</strong> (Δ ${lstm.error_30m.qnh_hpa})
+                                ${lstm.predicted_1h && lstm.predicted_1h.qnh_hpa !== null ? `<br>Pred +60m: <strong style="color:#ec4899;">${lstm.predicted_1h.qnh_hpa} hPa</strong> (Δ ${lstm.error_1h.qnh_hpa})` : ''}
+                            </div>
+                        </div>
+
+                        <!-- Angin -->
+                        <div class="closeup-param-box">
+                            <div class="closeup-param-name">💨 ANGIN PERMUKAAN</div>
+                            <div class="closeup-param-val" style="color:#059669;">
+                                ${lstm.actual.kec_angin_kt !== null ? lstm.actual.kec_angin_kt : '--'} kt
+                            </div>
+                            <div class="closeup-param-sub" style="color:var(--text-secondary);">
+                                Pred +30m: <strong style="color:#14b8a6;">${lstm.predicted_30m.kec_angin_kt} kt</strong> (Δ ${lstm.error_30m.kec_angin_kt})
+                                ${lstm.predicted_1h && lstm.predicted_1h.kec_angin_kt !== null ? `<br>Pred +60m: <strong style="color:#6366f1;">${lstm.predicted_1h.kec_angin_kt} kt</strong> (Δ ${lstm.error_1h.kec_angin_kt})` : ''}
+                            </div>
+                        </div>
+
+                        <!-- Titik Embun -->
+                        <div class="closeup-param-box">
+                            <div class="closeup-param-name">💧 TITIK EMBUN</div>
+                            <div class="closeup-param-val" style="color:#0284c7;">
+                                ${lstm.actual.dew_point_c !== null ? lstm.actual.dew_point_c : '--'} °C
+                            </div>
+                            <div class="closeup-param-sub" style="color:var(--text-secondary);">
+                                Pred +30m: <strong style="color:#06b6d4;">${lstm.predicted_30m.dew_point_c} °C</strong> (Δ ${lstm.error_30m.dew_point_c})
+                                ${lstm.predicted_1h && lstm.predicted_1h.dew_point_c !== null ? `<br>Pred +60m: <strong style="color:#a855f7;">${lstm.predicted_1h.dew_point_c} °C</strong> (Δ ${lstm.error_1h.dew_point_c})` : ''}
+                            </div>
+                        </div>
+                    </div>
+                    ` : '<p class="text-muted" style="text-align:center; padding:20px;">Data LSTM tidak tersedia untuk observasi ini.</p>'}
+                </div>
+            </div>
+        `;
+    }
+
+    // Keyboard navigation listener
+    document.addEventListener('keydown', function (e) {
+        const modal = document.getElementById('closeupModal');
+        if (!modal || !modal.classList.contains('active')) return;
+        if (e.key === 'Escape') {
+            closeCloseupModal();
+        } else if (e.key === 'ArrowLeft') {
+            prevCloseupRow();
+        } else if (e.key === 'ArrowRight') {
+            nextCloseupRow();
+        }
+    });
 
     document.addEventListener('DOMContentLoaded', function () {
         loadComparisonData('today');
