@@ -723,6 +723,7 @@ class ComparisonService:
         """
         Ambil rekaman harian dari Google Sheets / CSV dan lakukan roll-up akumulator secara murni.
         """
+        records = self.sheets.get_daily_summary_records(station=station, start_date=start_date, end_date=end_date)
         if not records:
             # Fallback jika belum ada di RingkasanEvaluasiHarian: coba kumpulkan langsung dari PredictionComparison
             try:
