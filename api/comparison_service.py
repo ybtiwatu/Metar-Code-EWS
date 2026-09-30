@@ -723,6 +723,7 @@ class ComparisonService:
         """
         Ambil rekaman harian dari Google Sheets / CSV dan lakukan roll-up akumulator secara murni.
         """
+        records = self.sheets.get_daily_summary_records(station=station, start_date=start_date, end_date=end_date)
         if not records:
             # Fallback jika belum ada di RingkasanEvaluasiHarian: coba kumpulkan langsung dari PredictionComparison
             try:
@@ -993,7 +994,22 @@ class ComparisonService:
             if comp_rec:
                 return comp_rec
 
-        return self._rollup_daily_summaries(start_date=d_str, end_date=d_str, station=station)
+        res = self._rollup_daily_summaries(start_date=d_str, end_date=d_str, station=station)
+        if res.get("xgboost_classification", {}).get("total_evaluasi", 0) == 0:
+            latest_summaries = self.sheets.get_daily_summary_records(station=station)
+            if latest_summaries:
+                latest_record = latest_summaries[-1]
+                compiled = self._compile_metrics_from_accumulators(latest_record)
+                compiled["status"] = "success"
+                compiled["metadata"] = {
+                    "station": station,
+                    "start_date": latest_record.get("date", d_str),
+                    "end_date": latest_record.get("date", d_str),
+                    "records_count": int(latest_record.get("total_samples_xgb") or 0),
+                    "source": "Google Sheets (Ringkasan Evaluasi Terakhir)"
+                }
+                return compiled
+        return res
 
     def get_metrics_monthly_ongoing(self, year: int, month: int, station: str = "WARR") -> Dict[str, Any]:
         """

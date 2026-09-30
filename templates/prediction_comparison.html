@@ -956,12 +956,6 @@
             if (options.month) queryParams += `&month=${options.month}`;
             if (options.date) {
                 queryParams += `&date=${options.date}`;
-            } else if (currentPeriod === 'today') {
-                queryParams += `&date=${formatLocalDate(now)}`;
-            } else if (currentPeriod === 'yesterday') {
-                const yDate = new Date(now);
-                yDate.setDate(now.getDate() - 1);
-                queryParams += `&date=${formatLocalDate(yDate)}`;
             }
 
             let summaryUrl = `/api/comparison/summary?${queryParams}`;
@@ -977,6 +971,11 @@
             if (summaryResp.status === 'fulfilled' && summaryResp.value.ok) {
                 summaryData = await summaryResp.value.json();
                 renderSummaryMetrics(summaryData, options);
+            } else {
+                const sBadge = document.getElementById('sourceBadge');
+                if (sBadge && (sBadge.textContent === 'Memuat data...' || !sBadge.textContent)) {
+                    sBadge.textContent = 'Observasi Terkini • Google Sheets';
+                }
             }
 
             if (detailResp.status === 'fulfilled' && detailResp.value.ok) {
