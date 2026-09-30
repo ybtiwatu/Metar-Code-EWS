@@ -80,9 +80,6 @@
                 <button type="button" class="btn btn-sm btn-outline" id="refreshBtn" onclick="refreshComparison()" title="Segarkan Data">
                     ↻ Refresh
                 </button>
-                <button type="button" class="btn btn-sm btn-outline" onclick="openBackfillModal()" title="Pre-kalkulasi & Simpan Massal ke Google Sheet">
-                    ⚡ Hitung ke Sheets
-                </button>
                 <button type="button" class="btn btn-sm btn-primary" onclick="exportComparisonCsv()" title="Unduh hasil perbandingan sebagai CSV">
                     📥 Download CSV
                 </button>
@@ -499,49 +496,6 @@
             </div>
         </div>
     </div>
-
-    <!-- Backfill / Precompute Historical Evaluation Modal -->
-    <div id="backfillModal" class="hidden" style="position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.6); z-index:99999; display:flex; align-items:center; justify-content:center;">
-        <div class="card" style="width: 520px; max-width: 92%; background: var(--bg-card, #ffffff); border: 1px solid var(--border-color); border-radius: var(--radius-lg); box-shadow: 0 15px 35px rgba(0,0,0,0.3); padding: 24px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border-color); padding-bottom: 12px; margin-bottom: 16px;">
-                <h3 style="margin:0; font-size:1.15rem; display:flex; align-items:center; gap:8px;">
-                    <span>⚡</span> Pre-kalkulasi & Sinkronkan ke Google Sheet
-                </h3>
-                <button type="button" onclick="closeBackfillModal()" style="background:none; border:none; font-size:1.5rem; cursor:pointer; color:var(--text-muted);">&times;</button>
-            </div>
-            <p style="font-size:0.85rem; color:var(--text-secondary); line-height: 1.5; margin-bottom: 14px;">
-                Perhitungan evaluasi model XGBoost & LSTM dilakukan <strong>terlebih dahulu</strong> dan hasilnya disimpan permanen ke Google Sheets (lembar <code>PredictionComparison</code> dan <code>RingkasanEvaluasiHarian</code>). Dengan demikian, pembacaan dashboard berikutnya berlangsung <strong>instan (&lt; 0.1 detik)</strong> tanpa membebani server saat diakses.
-            </p>
-            <div style="margin-bottom: 14px;">
-                <span style="font-size:0.8rem; font-weight:600; color:var(--text-muted); display:block; margin-bottom:6px;">Pilihan Cepat (Preset):</span>
-                <div class="flex gap-xs flex-wrap">
-                    <button type="button" class="btn btn-xs btn-outline" onclick="setBackfillPreset(3)">3 Hari Terakhir</button>
-                    <button type="button" class="btn btn-xs btn-outline" onclick="setBackfillPreset(7)">7 Hari Terakhir</button>
-                    <button type="button" class="btn btn-xs btn-outline" onclick="setBackfillPreset(14)">14 Hari Terakhir</button>
-                    <button type="button" class="btn btn-xs btn-outline" onclick="setBackfillPresetMonth()">Bulan Ini</button>
-                </div>
-            </div>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-sm mb-md">
-                <div>
-                    <label style="font-size:0.8rem; font-weight:600; display:block; margin-bottom:4px;">Tanggal Mulai:</label>
-                    <input type="date" id="backfillStartDate" class="form-input" style="width:100%; padding:8px 12px; border:1px solid var(--border-color); border-radius:var(--radius-sm); font-size:0.88rem;" />
-                </div>
-                <div>
-                    <label style="font-size:0.8rem; font-weight:600; display:block; margin-bottom:4px;">Tanggal Selesai:</label>
-                    <input type="date" id="backfillEndDate" class="form-input" style="width:100%; padding:8px 12px; border:1px solid var(--border-color); border-radius:var(--radius-sm); font-size:0.88rem;" />
-                </div>
-            </div>
-            <div id="backfillStatusAlert" class="alert-box alert-info mb-md hidden" style="font-size:0.85rem; padding:10px 14px;">
-                <span id="backfillStatusText">Sedang memproses perhitungan & menyimpan ke Sheets...</span>
-            </div>
-            <div style="display:flex; justify-content:flex-end; gap:10px;">
-                <button type="button" class="btn btn-sm btn-outline" onclick="closeBackfillModal()">Tutup</button>
-                <button type="button" class="btn btn-sm btn-primary" id="btnRunBackfill" onclick="executeBackfill()">
-                    🚀 Mulai Hitung & Simpan
-                </button>
-            </div>
-        </div>
-    </div>
 </div>
 {% endblock %}
 
@@ -618,87 +572,6 @@
 
     let selectedYear = new Date().getFullYear();
     let selectedMonth = new Date().getMonth() + 1;
-
-    function setBackfillPreset(days) {
-        const end = new Date();
-        const start = new Date();
-        start.setDate(end.getDate() - days);
-        document.getElementById('backfillStartDate').value = start.toISOString().split('T')[0];
-        document.getElementById('backfillEndDate').value = end.toISOString().split('T')[0];
-    }
-
-    function setBackfillPresetMonth() {
-        const today = new Date().toISOString().split('T')[0];
-        const firstOfMonth = today.slice(0, 8) + '01';
-        document.getElementById('backfillStartDate').value = firstOfMonth;
-        document.getElementById('backfillEndDate').value = today;
-    }
-
-    function openBackfillModal() {
-        const modal = document.getElementById('backfillModal');
-        if (modal) {
-            modal.classList.remove('hidden');
-            setBackfillPresetMonth();
-            const alertBox = document.getElementById('backfillStatusAlert');
-            if (alertBox) alertBox.classList.add('hidden');
-        }
-    }
-
-    function closeBackfillModal() {
-        const modal = document.getElementById('backfillModal');
-        if (modal) modal.classList.add('hidden');
-    }
-
-    async function executeBackfill() {
-        const start = document.getElementById('backfillStartDate').value;
-        const end = document.getElementById('backfillEndDate').value;
-        const alertBox = document.getElementById('backfillStatusAlert');
-        const alertText = document.getElementById('backfillStatusText');
-        const btn = document.getElementById('btnRunBackfill');
-
-        if (!start || !end) {
-            alert('Silakan pilih tanggal mulai dan selesai.');
-            return;
-        }
-
-        alertBox.classList.remove('hidden', 'alert-success', 'alert-error');
-        alertBox.classList.add('alert-info');
-        alertText.textContent = `Sedang melakukan pre-kalkulasi data dari ${start} s/d ${end} & menyimpannya ke Google Sheets...`;
-        btn.disabled = true;
-
-        try {
-            const resp = await fetch(`/api/comparison/backfill?station=WARR&start_date=${start}&end_date=${end}`);
-            const text = await resp.text();
-            let res;
-            try {
-                res = JSON.parse(text);
-            } catch (jsonErr) {
-                if (!resp.ok) {
-                    throw new Error(`Server ${resp.status}: Proses komputasi membutuhkan waktu lebih lama. Silakan pilih rentang yang lebih pendek (misal 3-7 hari) atau jalankan precompute script.`);
-                }
-                throw new Error(`Respons tidak valid: ${text.slice(0, 100)}`);
-            }
-
-            if (resp.ok && res.status === 'success') {
-                alertBox.classList.remove('alert-info');
-                alertBox.classList.add('alert-success');
-                const successCount = res.summary ? res.summary.success : 0;
-                alertText.textContent = `✅ Berhasil! Hasil evaluasi ${successCount} hari berhasil dihitung dan tersimpan di Google Sheets.`;
-                setTimeout(() => {
-                    closeBackfillModal();
-                    loadComparisonData(currentPeriod);
-                }, 1600);
-            } else {
-                throw new Error(res.error || 'Gagal mengevaluasi data');
-            }
-        } catch (err) {
-            alertBox.classList.remove('alert-info');
-            alertBox.classList.add('alert-error');
-            alertText.textContent = `❌ ${err.message}`;
-        } finally {
-            btn.disabled = false;
-        }
-    }
 
     function switchPeriod(p) {
         currentPeriod = p;

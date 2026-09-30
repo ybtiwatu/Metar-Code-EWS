@@ -2630,66 +2630,16 @@ def api_comparison_summary():
 
 
 @app.route("/api/comparison/backfill", methods=["POST", "GET"])
+@app.route("/api/comparison/precompute", methods=["POST", "GET"])
 def api_comparison_backfill():
     """
-    Trigger backfill historical evaluasi harian secara massal.
+    Perhitungan massal data lama dialihkan ke eksekusi offline (scripts/precompute_comparison.py)
+    agar tidak membebani serverless/web hosting dan mencegah timeout Vercel.
     """
-    station = request.args.get("station", "WARR").strip().upper()
-    start_date_str = request.args.get("start_date", "").strip()
-    end_date_str = request.args.get("end_date", "").strip()
-
-    if not start_date_str or not end_date_str:
-        return jsonify({
-            "status": "error",
-            "error": "Parameter 'start_date' dan 'end_date' (format YYYY-MM-DD) wajib diisi."
-        }), 400
-
-    try:
-        start_d = datetime.strptime(start_date_str, "%Y-%m-%d").date()
-        end_d = datetime.strptime(end_date_str, "%Y-%m-%d").date()
-        summary = comparison_service.backfill_historical_data(start_d, end_d, station=station)
-        return jsonify({
-            "status": "success",
-            "station": station,
-            "start_date": start_date_str,
-            "end_date": end_date_str,
-            "summary": summary
-        })
-    except Exception as e:
-        traceback.print_exc()
-        return jsonify({"status": "error", "error": f"Gagal menjalankan backfill: {str(e)}"}), 500
-
-
-@app.route("/api/comparison/precompute", methods=["POST", "GET"])
-def api_comparison_precompute():
-    """
-    Menjalankan perhitungan evaluasi batch di latar belakang dan menyimpannya langsung
-    ke Google Sheets ('PredictionComparison' & 'RingkasanEvaluasiHarian').
-    """
-    station = request.args.get("station", "WARR").strip().upper()
-    try:
-        days = int(request.args.get("days", 3))
-    except (ValueError, TypeError):
-        days = 3
-    days = min(max(days, 1), 14)
-
-    today = datetime.utcnow().date()
-    start_d = today - timedelta(days=days)
-    end_d = today
-
-    try:
-        summary = comparison_service.backfill_historical_data(start_d, end_d, station=station)
-        return jsonify({
-            "status": "success",
-            "message": f"Pre-kalkulasi selesai untuk {station} ({days} hari terakhir: {start_d} s/d {end_d})",
-            "station": station,
-            "start_date": str(start_d),
-            "end_date": str(end_d),
-            "result": summary
-        })
-    except Exception as e:
-        traceback.print_exc()
-        return jsonify({"status": "error", "error": f"Gagal pre-kalkulasi: {str(e)}"}), 500
+    return jsonify({
+        "status": "info",
+        "message": "Perhitungan data lama dilakukan offline via scripts/precompute_comparison.py untuk menjaga performa web."
+    }), 200
 
 
 @app.route("/api/metar/<station_code>")
@@ -4383,16 +4333,6 @@ def cron_sync():
                 'metar': latest_metar_data.get('raw') if isinstance(latest_metar_data, dict) else None,
                 'attempts': 0
             }
-
-            # Asynchronously update daily evaluation summary in RingkasanEvaluasiHarian
-            try:
-                threading.Thread(
-                    target=comparison_service.evaluate_daily_records,
-                    args=(now.date(), station),
-                    daemon=True
-                ).start()
-            except Exception as ev_err:
-                print(f"[CRON] Daily eval trigger error: {ev_err}", file=sys.stderr)
             
             # Safely get preview
             raw_preview = ""
