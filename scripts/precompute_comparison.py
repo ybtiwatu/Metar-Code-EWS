@@ -48,8 +48,19 @@ def main():
     parser.add_argument("--start-date", help="Tanggal mulai (YYYY-MM-DD)")
     parser.add_argument("--end-date", help="Tanggal selesai (YYYY-MM-DD)")
 
+    parser.add_argument("--tidy-only", action="store_true", help="Hanya rapikan dan urutkan Google Sheets & CSV tanpa kalkulasi ulang ML")
+
     args = parser.parse_args()
     station = args.station.strip().upper()
+
+    if args.tidy_only:
+        print(f"\n=======================================================")
+        print(f"🧹 METAR SHEETS TIDY & SORT")
+        print(f"   Google Sheet: {'Terhubung ✅' if sheets_handler.client else 'Lokal / Offline ⚠️'}")
+        print(f"=======================================================\n")
+        sheets_handler.tidy_and_sort_sheets()
+        print(f"✅ Data di Google Sheets & CSV lokal berhasil dirapikan dan diurutkan secara kronologis!\n")
+        return
 
     if args.start_date and args.end_date:
         start_d = datetime.strptime(args.start_date, "%Y-%m-%d").date()
@@ -69,12 +80,12 @@ def main():
     res = comparison_service.backfill_historical_data(start_d, end_d, station=station)
     duration = time.time() - start_time
 
-    print(f"\n✅ Pre-kalkulasi selesai dalam {duration:.1f} detik!")
+    print(f"\n✅ Pre-kalkulasi & Pengurutan Waktu selesai dalam {duration:.1f} detik!")
     print(f"   Hari sukses : {res.get('success', 0)}")
     print(f"   Hari gagal  : {res.get('failed', 0)}")
-    print(f"   Hasil tersimpan di Google Sheets:")
-    print(f"   - Lembar 'PredictionComparison'   (Data observasi & error per jam)")
-    print(f"   - Lembar 'RingkasanEvaluasiHarian' (Akumulator MAE, RMSE, Confusion Matrix)\n")
+    print(f"   Hasil tersimpan dan terurut secara kronologis di Google Sheets & CSV:")
+    print(f"   - Lembar 'PredictionComparison'   (Data observasi & error per jam - Terurut Waktu)")
+    print(f"   - Lembar 'RingkasanEvaluasiHarian' (Akumulator MAE, RMSE, Confusion Matrix - Terurut Tanggal)\n")
 
 
 if __name__ == "__main__":

@@ -652,9 +652,21 @@ class GoogleSheetHandler:
                 subset_cols = [c for c in ["station", "metar_raw"] if c in combined.columns]
                 if subset_cols:
                     combined.drop_duplicates(subset=subset_cols, keep="last", inplace=True)
-                combined.to_csv(csv_path, index=False)
             else:
-                new_df.to_csv(csv_path, index=False)
+                combined = new_df
+
+            # Selalu urutkan waktu observasi secara kronologis (ascending)
+            if not combined.empty:
+                def _get_sort_key(row):
+                    logged = str(row.get('logged_at_utc', ''))
+                    token = str(row.get('time_token', ''))
+                    ym = logged[:7] if len(logged) >= 7 else '2026-09'
+                    return f'{ym}-{token}'
+                combined['sort_key'] = combined.apply(_get_sort_key, axis=1)
+                combined.sort_values(by=['sort_key'], ascending=True, inplace=True)
+                combined.drop(columns=['sort_key'], inplace=True)
+
+            combined.to_csv(csv_path, index=False)
         except Exception as csv_err:
             print(f"[SHEETS] Fallback CSV write error: {csv_err}", file=sys.stderr)
 
@@ -954,9 +966,14 @@ class GoogleSheetHandler:
                 subset_cols = [c for c in ["station", "tanggal"] if c in combined.columns]
                 if subset_cols:
                     combined.drop_duplicates(subset=subset_cols, keep="last", inplace=True)
-                combined.to_csv(csv_path, index=False)
             else:
-                new_df.to_csv(csv_path, index=False)
+                combined = new_df
+
+            # Selalu urutkan tanggal secara kronologis (ascending)
+            if "tanggal" in combined.columns:
+                combined.sort_values(by=["tanggal"], ascending=True, inplace=True)
+
+            combined.to_csv(csv_path, index=False)
         except Exception as csv_err:
             print(f"[SHEETS] Fallback daily summary CSV error: {csv_err}", file=sys.stderr)
 
@@ -1064,6 +1081,96 @@ class GoogleSheetHandler:
             filtered.append(self._sanitize_daily_summary_record(r))
 
         return filtered
+
+    def tidy_and_sort_sheets(self) -> bool:
+        """
+        Merapikan dan mengurutkan seluruh data Google Sheets dan CSV lokal secara kronologis:
+        1. RingkasanEvaluasiHarian diurutkan berdasarkan kolom 'tanggal' (ascending).
+        2. PredictionComparison diurutkan berdasarkan waktu observasi (ascending).
+        """
+        # 1. Rapikan file CSV lokal
+        try:
+            r_path = self._get_daily_summary_csv_path()
+            if os.path.exists(r_path):
+                df_r = pd.read_csv(r_path)
+                df_r.drop_duplicates(subset=[c for c in ["station", "tanggal"] if c in df_r.columns], keep="last", inplace=True)
+                if "tanggal" in df_r.columns:
+                    df_r.sort_values(by=["tanggal"], ascending=True, inplace=True)
+                df_r.to_csv(r_path, index=False)
+
+            c_path = self._get_comparison_csv_path()
+            if os.path.exists(c_path):
+                df_c = pd.read_csv(c_path)
+                def _c_sort(row):
+                    logged = str(row.get('logged_at_utc', ''))
+                    tok = str(row.get('time_token', ''))
+                    ym = logged[:7] if len(logged) >= 7 else '2026-09'
+                    return f'{ym}-{tok}'
+                df_c['sort_key'] = df_c.apply(_c_sort, axis=1)
+                df_c.drop_duplicates(subset=[c for c in ["station", "metar_raw"] if c in df_c.columns], keep="last", inplace=True)
+                df_c.sort_values(by=['sort_key'], ascending=True, inplace=True)
+                df_c.drop(columns=['sort_key'], inplace=True)
+                df_c.to_csv(c_path, index=False)
+        except Exception as local_err:
+            print(f"[SHEETS] Tidy local CSV warning: {local_err}", file=sys.stderr)
+
+        # 2. Rapikan Google Sheets jika terhubung
+        if not self.client:
+            self._authenticate()
+        if not self.client:
+            return True
+
+        try:
+            sp = self.client.open_by_key(SPREADSHEET_ID)
+
+            # Rapikan RingkasanEvaluasiHarian
+            try:
+                ws_r = sp.worksheet("RingkasanEvaluasiHarian")
+                vals_r = ws_r.get_all_values()
+                if len(vals_r) > 2:
+                    hdr_r = vals_r[0]
+                    rows_r = [r for r in vals_r[1:] if any(c.strip() for c in r)]
+                    seen_r = {}
+                    for r in rows_r:
+                        seen_r[(str(r[0]).strip().upper(), str(r[1]).strip())] = r
+                    sorted_r = sorted(seen_r.values(), key=lambda r: (str(r[0]).strip().upper(), str(r[1]).strip()))
+                    ws_r.clear()
+                    ws_r.update(values=[hdr_r] + sorted_r, range_name="A1", value_input_option="USER_ENTERED")
+                    print(f"[SHEETS] Auto-sorted RingkasanEvaluasiHarian ({len(sorted_r)} rows)", file=sys.stderr)
+            except Exception as e_r:
+                print(f"[SHEETS] Tidy RingkasanEvaluasiHarian warning: {e_r}", file=sys.stderr)
+
+            # Rapikan PredictionComparison
+            try:
+                ws_c = sp.worksheet("PredictionComparison")
+                vals_c = ws_c.get_all_values()
+                if len(vals_c) > 2:
+                    hdr_c = vals_c[0]
+                    rows_c = [r for r in vals_c[1:] if any(c.strip() for c in r)]
+                    seen_c = {}
+                    for r in rows_c:
+                        m_raw = str(r[2]).strip() if len(r) > 2 else ""
+                        tok = str(r[3]).strip() if len(r) > 3 else ""
+                        seen_c[(str(r[1]).strip().upper(), m_raw or tok)] = r
+                    
+                    def _get_ws_c_sort(r):
+                        logged = str(r[0]).strip() if len(r) > 0 else ""
+                        tok = str(r[3]).strip() if len(r) > 3 else ""
+                        ym = logged[:7] if len(logged) >= 7 else "2026-09"
+                        return f"{ym}-{tok}"
+
+                    sorted_c = sorted(seen_c.values(), key=_get_ws_c_sort)
+                    ws_c.clear()
+                    ws_c.update(values=[hdr_c] + sorted_c, range_name="A1", value_input_option="USER_ENTERED")
+                    print(f"[SHEETS] Auto-sorted PredictionComparison ({len(sorted_c)} rows)", file=sys.stderr)
+            except Exception as e_c:
+                print(f"[SHEETS] Tidy PredictionComparison warning: {e_c}", file=sys.stderr)
+
+            self._cache.clear()
+            return True
+        except Exception as e:
+            print(f"[SHEETS] Error in tidy_and_sort_sheets: {e}", file=sys.stderr)
+            return False
 
 # Singleton instance
 sheets_handler = GoogleSheetHandler()

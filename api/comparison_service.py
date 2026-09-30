@@ -586,6 +586,14 @@ class ComparisonService:
             curr += timedelta(days=1)
 
         logger.info(f"Backfill selesai: {success_count} sukses, {failure_count} gagal.")
+
+        # Otomatis rapikan, hapus duplikat, dan urutkan data secara kronologis
+        try:
+            logger.info("Merapikan dan mengurutkan Google Sheets & CSV secara kronologis...")
+            self.sheets.tidy_and_sort_sheets()
+        except Exception as sort_err:
+            logger.warning(f"Gagal merapikan dan mengurutkan sheets setelah backfill: {sort_err}")
+
         return {"success": success_count, "failed": failure_count}
 
     # =========================================================================
@@ -802,27 +810,27 @@ class ComparisonService:
             cm_counts = {f"cm_{a.lower()}_{p.lower()}": 0 for a in RISK_CLASSES for p in RISK_CLASSES}
 
             for r in matching_rows:
-                e_temp = r.get("err_temp_30m")
-                e_wind = r.get("err_wind_30m")
-                e_qnh = r.get("err_qnh_30m")
-                e_dew = r.get("err_dew_60m") or r.get("err_dew_30m")
+                v_temp = _safe_float(r.get("err_temp_30m"))
+                v_wind = _safe_float(r.get("err_wind_30m"))
+                v_qnh = _safe_float(r.get("err_qnh_30m"))
+                v_dew = _safe_float(r.get("err_dew_60m") or r.get("err_dew_30m"))
                 valid_lstm = False
 
-                if e_temp is not None and not (isinstance(e_temp, float) and math.isnan(e_temp)):
-                    sae_suhu += abs(float(e_temp))
-                    sse_suhu += float(e_temp) ** 2
+                if v_temp is not None:
+                    sae_suhu += abs(v_temp)
+                    sse_suhu += v_temp ** 2
                     valid_lstm = True
-                if e_wind is not None and not (isinstance(e_wind, float) and math.isnan(e_wind)):
-                    sae_angin += abs(float(e_wind))
-                    sse_angin += float(e_wind) ** 2
+                if v_wind is not None:
+                    sae_angin += abs(v_wind)
+                    sse_angin += v_wind ** 2
                     valid_lstm = True
-                if e_qnh is not None and not (isinstance(e_qnh, float) and math.isnan(e_qnh)):
-                    sae_qnh += abs(float(e_qnh))
-                    sse_qnh += float(e_qnh) ** 2
+                if v_qnh is not None:
+                    sae_qnh += abs(v_qnh)
+                    sse_qnh += v_qnh ** 2
                     valid_lstm = True
-                if e_dew is not None and not (isinstance(e_dew, float) and math.isnan(e_dew)):
-                    sae_dew += abs(float(e_dew))
-                    sse_dew += float(e_dew) ** 2
+                if v_dew is not None:
+                    sae_dew += abs(v_dew)
+                    sse_dew += v_dew ** 2
                     valid_lstm = True
                 if valid_lstm:
                     total_lstm += 1
