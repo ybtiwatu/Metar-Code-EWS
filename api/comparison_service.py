@@ -323,26 +323,29 @@ class ComparisonService:
                             for p in priors_10
                         ], dtype=np.float32)
                         preds = predict_metar_multistep(seq_10, steps=2)
-                        p60 = preds[1]  # Step 2 = +60 menit ke depan
+                        p30 = preds[0]
+                        p60 = preds[1] if len(preds) > 1 else preds[0]
+                        curr["lstm_pred_suhu_30m"] = round(float(p30["suhu_c"]), 2)
+                        curr["lstm_pred_angin_30m"] = round(float(p30["kec_angin_kt"]), 2)
+                        curr["lstm_pred_qnh_30m"] = round(float(p30["qnh_hpa"]), 2)
+                        curr["lstm_pred_dew_30m"] = round(float(p30["dew_point_c"]), 2)
+
                         curr["lstm_pred_suhu_60m"] = round(float(p60["suhu_c"]), 2)
                         curr["lstm_pred_angin_60m"] = round(float(p60["kec_angin_kt"]), 2)
                         curr["lstm_pred_qnh_60m"] = round(float(p60["qnh_hpa"]), 2)
                         curr["lstm_pred_dew_60m"] = round(float(p60["dew_point_c"]), 2)
                     except Exception as e:
-                        curr["lstm_pred_suhu_60m"] = None
-                        curr["lstm_pred_angin_60m"] = None
-                        curr["lstm_pred_qnh_60m"] = None
-                        curr["lstm_pred_dew_60m"] = None
+                        for k in ["suhu", "angin", "qnh", "dew"]:
+                            curr[f"lstm_pred_{k}_30m"] = None
+                            curr[f"lstm_pred_{k}_60m"] = None
                 else:
-                    curr["lstm_pred_suhu_60m"] = None
-                    curr["lstm_pred_angin_60m"] = None
-                    curr["lstm_pred_qnh_60m"] = None
-                    curr["lstm_pred_dew_60m"] = None
+                    for k in ["suhu", "angin", "qnh", "dew"]:
+                        curr[f"lstm_pred_{k}_30m"] = None
+                        curr[f"lstm_pred_{k}_60m"] = None
             else:
-                curr["lstm_pred_suhu_60m"] = None
-                curr["lstm_pred_angin_60m"] = None
-                curr["lstm_pred_qnh_60m"] = None
-                curr["lstm_pred_dew_60m"] = None
+                for k in ["suhu", "angin", "qnh", "dew"]:
+                    curr[f"lstm_pred_{k}_30m"] = None
+                    curr[f"lstm_pred_{k}_60m"] = None
 
         full_df = pd.DataFrame(raw_records)
 
@@ -478,6 +481,87 @@ class ComparisonService:
 
         ok = self.sheets.save_daily_summary_record(summary_record)
         logger.info(f"[{station}] Evaluasi harian {date_str} tersimpan (LSTM={total_samples_lstm}, XGB={total_samples_xgb})")
+
+        # 8. Simpan detail observasi per jam ke PredictionComparison & fallback CSV
+        try:
+            comp_records_to_save = []
+            for _, row in merged_lstm.iterrows():
+                raw_m = str(row.get("raw_metar", "")).strip()
+                if not raw_m:
+                    continue
+
+                ts = row.get("timestamp")
+                logged_iso = ts.isoformat() + "Z" if isinstance(ts, (datetime, pd.Timestamp)) else datetime.utcnow().isoformat() + "Z"
+                m_match = re.search(r'\b(\d{6}Z)\b', raw_m)
+                time_token = m_match.group(1) if m_match else (ts.strftime("%d%H%MZ") if isinstance(ts, (datetime, pd.Timestamp)) else "")
+
+                pred_risk = str(row.get("prediksi_risiko_xgb", "AMAN")).strip().upper()
+                act_risk = str(row.get("risiko_aktual", "AMAN")).strip().upper()
+                danger_prob = float(row.get("xgb_prob_bahaya") or 0.0)
+
+                # Match type
+                if pred_risk == "HIGH" and act_risk == "HIGH":
+                    m_type = "TP"
+                elif pred_risk != "HIGH" and act_risk != "HIGH":
+                    m_type = "TN"
+                elif pred_risk == "HIGH" and act_risk != "HIGH":
+                    m_type = "FP"
+                else:
+                    m_type = "FN"
+
+                p_temp_60 = _clean_val(row.get("lstm_pred_suhu_60m_donor") or row.get("lstm_pred_suhu_60m"), [(500, 100.0), (60, 10.0)])
+                p_qnh_60 = _clean_val(row.get("lstm_pred_qnh_60m_donor") or row.get("lstm_pred_qnh_60m"), [(50000, 100.0), (5000, 10.0)])
+                p_wind_60 = _clean_val(row.get("lstm_pred_angin_60m_donor") or row.get("lstm_pred_angin_60m"), [(500, 100.0), (70, 10.0)])
+                p_dew_60 = _clean_val(row.get("lstm_pred_dew_60m_donor") or row.get("lstm_pred_dew_60m"), [(500, 100.0), (60, 10.0)])
+
+                p_temp_30 = _clean_val(row.get("lstm_pred_suhu_30m"), [(500, 100.0), (60, 10.0)]) or p_temp_60
+                p_qnh_30 = _clean_val(row.get("lstm_pred_qnh_30m"), [(50000, 100.0), (5000, 10.0)]) or p_qnh_60
+                p_wind_30 = _clean_val(row.get("lstm_pred_angin_30m"), [(500, 100.0), (70, 10.0)]) or p_wind_60
+                p_dew_30 = _clean_val(row.get("lstm_pred_dew_30m"), [(500, 100.0), (60, 10.0)]) or p_dew_60
+
+                a_temp = _clean_val(row.get("suhu_aktual"), [(500, 100.0), (60, 10.0)])
+                a_qnh = _clean_val(row.get("qnh_aktual"), [(50000, 100.0), (5000, 10.0)])
+                a_wind = _clean_val(row.get("kecepatan_angin_aktual"), [(500, 100.0), (70, 10.0)])
+                a_dew = _clean_val(row.get("dew_point_aktual"), [(500, 100.0), (60, 10.0)])
+
+                comp_records_to_save.append({
+                    "logged_at_utc": logged_iso,
+                    "station": station,
+                    "metar_raw": raw_m,
+                    "time_token": time_token,
+                    "xgb_pred_status": "BAHAYA" if pred_risk == "HIGH" else "AMAN",
+                    "xgb_danger_prob": round(danger_prob, 2),
+                    "xgb_confidence": round(100.0 - abs(50.0 - danger_prob) * 0.5, 2),
+                    "xgb_actual_status": "BAHAYA" if act_risk == "HIGH" else "AMAN",
+                    "xgb_actual_phenomena": "Badai / Kondisi Bahaya" if act_risk == "HIGH" else ("Awan CB / Waspada" if act_risk == "MEDIUM" else "Normal / Kondusif"),
+                    "xgb_match_type": m_type,
+                    "actual_temp": a_temp,
+                    "pred_temp_30m": p_temp_30,
+                    "err_temp_30m": round(abs(a_temp - p_temp_30), 2) if (a_temp is not None and p_temp_30 is not None) else None,
+                    "pred_temp_60m": p_temp_60,
+                    "err_temp_60m": round(abs(a_temp - p_temp_60), 2) if (a_temp is not None and p_temp_60 is not None) else None,
+                    "actual_qnh": a_qnh,
+                    "pred_qnh_30m": p_qnh_30,
+                    "err_qnh_30m": round(abs(a_qnh - p_qnh_30), 2) if (a_qnh is not None and p_qnh_30 is not None) else None,
+                    "pred_qnh_60m": p_qnh_60,
+                    "err_qnh_60m": round(abs(a_qnh - p_qnh_60), 2) if (a_qnh is not None and p_qnh_60 is not None) else None,
+                    "actual_wind": a_wind,
+                    "pred_wind_30m": p_wind_30,
+                    "err_wind_30m": round(abs(a_wind - p_wind_30), 2) if (a_wind is not None and p_wind_30 is not None) else None,
+                    "pred_wind_60m": p_wind_60,
+                    "err_wind_60m": round(abs(a_wind - p_wind_60), 2) if (a_wind is not None and p_wind_60 is not None) else None,
+                    "actual_dew": a_dew,
+                    "pred_dew_30m": p_dew_30,
+                    "err_dew_30m": round(abs(a_dew - p_dew_30), 2) if (a_dew is not None and p_dew_30 is not None) else None,
+                    "pred_dew_60m": p_dew_60,
+                    "err_dew_60m": round(abs(a_dew - p_dew_60), 2) if (a_dew is not None and p_dew_60 is not None) else None,
+                })
+
+            if comp_records_to_save:
+                self.sheets.save_comparison_records(comp_records_to_save)
+        except Exception as comp_save_err:
+            logger.warning(f"Gagal menyimpan detail observasi comparison: {comp_save_err}")
+
         return ok
 
     def backfill_historical_data(self, start_date: date, end_date: date, station: str = "WARR") -> Dict[str, int]:
