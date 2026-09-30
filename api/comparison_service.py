@@ -73,8 +73,24 @@ def _classify_predicted_risk(danger_prob_percent: float) -> str:
 
 
 def _safe_float(val: Any) -> Optional[float]:
+    if val is None:
+        return None
+    if isinstance(val, (int, float)):
+        return float(val) if math.isfinite(val) else None
+    s = str(val).strip().replace(" ", "")
+    if not s:
+        return None
+    if "," in s and "." not in s:
+        s = s.replace(",", ".")
+    elif s.count(".") > 1:
+        s = s.replace(".", "")
+    elif "," in s and "." in s:
+        if s.rfind(",") > s.rfind("."):
+            s = s.replace(".", "").replace(",", ".")
+        else:
+            s = s.replace(",", "")
     try:
-        f = float(val)
+        f = float(s)
         return f if math.isfinite(f) else None
     except (TypeError, ValueError):
         return None
@@ -736,21 +752,24 @@ class ComparisonService:
 
         for r in records:
             acc["total_samples_lstm"] += int(r.get("total_samples_lstm") or 0)
-            acc["sum_abs_error_suhu"] += float(r.get("sum_abs_error_suhu") or 0.0)
-            acc["sum_sq_error_suhu"] += float(r.get("sum_sq_error_suhu") or 0.0)
-            acc["sum_abs_error_angin"] += float(r.get("sum_abs_error_angin") or 0.0)
-            acc["sum_sq_error_angin"] += float(r.get("sum_sq_error_angin") or 0.0)
-            acc["sum_abs_error_qnh"] += float(r.get("sum_abs_error_qnh") or 0.0)
-            acc["sum_sq_error_qnh"] += float(r.get("sum_sq_error_qnh") or 0.0)
-            acc["sum_abs_error_dew"] += float(r.get("sum_abs_error_dew") or 0.0)
-            acc["sum_sq_error_dew"] += float(r.get("sum_sq_error_dew") or 0.0)
+            acc["sum_abs_error_suhu"] += _safe_float(r.get("sum_abs_error_suhu")) or 0.0
+            acc["sum_sq_error_suhu"] += _safe_float(r.get("sum_sq_error_suhu")) or 0.0
+            acc["sum_abs_error_angin"] += _safe_float(r.get("sum_abs_error_angin")) or 0.0
+            acc["sum_sq_error_angin"] += _safe_float(r.get("sum_sq_error_angin")) or 0.0
+            acc["sum_abs_error_qnh"] += _safe_float(r.get("sum_abs_error_qnh")) or 0.0
+            acc["sum_sq_error_qnh"] += _safe_float(r.get("sum_sq_error_qnh")) or 0.0
+            acc["sum_abs_error_dew"] += _safe_float(r.get("sum_abs_error_dew")) or 0.0
+            acc["sum_sq_error_dew"] += _safe_float(r.get("sum_sq_error_dew")) or 0.0
             acc["total_samples_xgb"] += int(r.get("total_samples_xgb") or 0)
             acc["xgb_total_benar"] += int(r.get("xgb_total_benar") or 0)
 
             for a in RISK_CLASSES:
                 for p in RISK_CLASSES:
                     k = f"cm_{a.lower()}_{p.lower()}"
-                    acc[k] += int(r.get(k) or 0)
+                    v = r.get(k)
+                    if v is None:
+                        v = r.get(k.replace("medium", "med"))
+                    acc[k] += int(v or 0)
 
         compiled = self._compile_metrics_from_accumulators(acc)
         compiled["status"] = "success"

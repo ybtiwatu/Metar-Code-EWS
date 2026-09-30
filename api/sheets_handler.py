@@ -1008,13 +1008,13 @@ class GoogleSheetHandler:
                 int(record.get("total_samples_xgb") or 0),
                 int(record.get("xgb_total_benar") or 0),
                 int(record.get("cm_low_low") or 0),
-                int(record.get("cm_low_med") or 0),
+                int(record.get("cm_low_medium") or record.get("cm_low_med") or 0),
                 int(record.get("cm_low_high") or 0),
-                int(record.get("cm_med_low") or 0),
-                int(record.get("cm_med_med") or 0),
-                int(record.get("cm_med_high") or 0),
+                int(record.get("cm_medium_low") or record.get("cm_med_low") or 0),
+                int(record.get("cm_medium_medium") or record.get("cm_med_med") or 0),
+                int(record.get("cm_medium_high") or record.get("cm_med_high") or 0),
                 int(record.get("cm_high_low") or 0),
-                int(record.get("cm_high_med") or 0),
+                int(record.get("cm_high_medium") or record.get("cm_high_med") or 0),
                 int(record.get("cm_high_high") or 0),
                 str(record.get("updated_at") or datetime.utcnow().isoformat() + "Z")
             ]
@@ -1050,7 +1050,19 @@ class GoogleSheetHandler:
                     if records:
                         return records
                 except Exception as e:
-                    print(f"[SHEETS] Error reading RingkasanEvaluasiHarian: {e}", file=sys.stderr)
+                    print(f"[SHEETS] Error reading RingkasanEvaluasiHarian via get_all_records: {e}", file=sys.stderr)
+                    try:
+                        vals = worksheet.get_all_values()
+                        if vals and len(vals) > 1:
+                            headers = [h.strip() for h in vals[0] if h.strip()]
+                            safe_recs = []
+                            for row in vals[1:]:
+                                if any(c.strip() for c in row):
+                                    safe_recs.append({headers[i]: row[i] if i < len(row) else "" for i in range(len(headers))})
+                            if safe_recs:
+                                return safe_recs
+                    except Exception as inner_e:
+                        print(f"[SHEETS] Safe get_all_values also failed: {inner_e}", file=sys.stderr)
 
             # 2. Fallback to CSV
             csv_path = self._get_daily_summary_csv_path()
@@ -1127,9 +1139,9 @@ class GoogleSheetHandler:
             try:
                 ws_r = sp.worksheet("RingkasanEvaluasiHarian")
                 vals_r = ws_r.get_all_values()
-                if len(vals_r) > 2:
-                    hdr_r = vals_r[0]
-                    rows_r = [r for r in vals_r[1:] if any(c.strip() for c in r)]
+                if len(vals_r) > 1:
+                    hdr_r = [h.strip() for h in vals_r[0] if h.strip()]
+                    rows_r = [r[:len(hdr_r)] for r in vals_r[1:] if any(c.strip() for c in r)]
                     seen_r = {}
                     for r in rows_r:
                         seen_r[(str(r[0]).strip().upper(), str(r[1]).strip())] = r
@@ -1144,9 +1156,9 @@ class GoogleSheetHandler:
             try:
                 ws_c = sp.worksheet("PredictionComparison")
                 vals_c = ws_c.get_all_values()
-                if len(vals_c) > 2:
-                    hdr_c = vals_c[0]
-                    rows_c = [r for r in vals_c[1:] if any(c.strip() for c in r)]
+                if len(vals_c) > 1:
+                    hdr_c = [h.strip() for h in vals_c[0] if h.strip()]
+                    rows_c = [r[:len(hdr_c)] for r in vals_c[1:] if any(c.strip() for c in r)]
                     seen_c = {}
                     for r in rows_c:
                         m_raw = str(r[2]).strip() if len(r) > 2 else ""
