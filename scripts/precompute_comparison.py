@@ -17,7 +17,12 @@ Penggunaan:
 import sys
 import os
 import argparse
+import time
+import warnings
 from datetime import date, datetime, timedelta
+
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+warnings.filterwarnings("ignore", category=UserWarning)
 
 # Fix Windows terminal UTF-8 encoding for emojis
 if sys.platform.startswith("win"):
@@ -60,9 +65,9 @@ def main():
     print(f"   Google Sheet: {'Terhubung ✅' if sheets_handler.client else 'Lokal / Offline ⚠️'}")
     print(f"=======================================================\n")
 
-    start_time = datetime.utcnow()
+    start_time = time.time()
     res = comparison_service.backfill_historical_data(start_d, end_d, station=station)
-    duration = (datetime.utcnow() - start_time).total_seconds()
+    duration = time.time() - start_time
 
     print(f"\n✅ Pre-kalkulasi selesai dalam {duration:.1f} detik!")
     print(f"   Hari sukses : {res.get('success', 0)}")

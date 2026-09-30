@@ -117,10 +117,28 @@ class ComparisonService:
         features_list = ["suhu_c", "qnh_hpa", "kec_angin_kt", "dew_point_c"]
 
         if not raw_df.empty and "metar" in raw_df.columns:
-            for _, row in raw_df.iterrows():
-                r_stn = str(row.get("station", station)).strip().upper()
-                if r_stn != station or pd.isna(row.get("metar")):
-                    continue
+            # Optimasi Cepat: Filter station dan rentang tanggal target secara vectorized
+            df_slice = raw_df.dropna(subset=["metar"])
+            if "station" in df_slice.columns:
+                df_slice = df_slice[df_slice["station"].astype(str).str.strip().str.upper() == station]
+
+            if "time" in df_slice.columns:
+                prev_d_str = (target_date - timedelta(days=1)).strftime("%Y-%m-%d")
+                curr_d_str = target_date.strftime("%Y-%m-%d")
+                next_d_str = (target_date + timedelta(days=1)).strftime("%Y-%m-%d")
+                time_s = df_slice["time"].astype(str)
+                date_mask = (
+                    time_s.str.startswith(prev_d_str) |
+                    time_s.str.startswith(curr_d_str) |
+                    time_s.str.startswith(next_d_str)
+                )
+                filtered_slice = df_slice[date_mask]
+                if len(filtered_slice) >= 3:
+                    df_slice = filtered_slice
+                else:
+                    df_slice = df_slice.tail(2000)
+
+            for _, row in df_slice.iterrows():
 
                 raw_m = normalize_metar(str(row["metar"]))
                 if not raw_m:

@@ -669,16 +669,20 @@ class GoogleSheetHandler:
 
             all_vals = worksheet.get_all_values()
             existing_metars = set()
+            existing_tokens = set()
             if len(all_vals) > 1:
-                # metar_raw is index 2
-                for row in all_vals[-100:]:
+                # metar_raw is index 2, time_token is index 3
+                for row in all_vals[1:]:
                     if len(row) > 2 and row[2]:
                         existing_metars.add(row[2].strip())
+                    if len(row) > 3 and row[3]:
+                        existing_tokens.add(row[3].strip())
 
             rows_to_append = []
             for r in records:
                 m_raw = str(r.get("metar_raw", "")).strip()
-                if m_raw and m_raw in existing_metars:
+                t_tok = str(r.get("time_token", "")).strip()
+                if (m_raw and m_raw in existing_metars) or (t_tok and t_tok in existing_tokens):
                     continue
 
                 row_vals = [
