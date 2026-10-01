@@ -1127,6 +1127,10 @@
         document.getElementById('cm_high_high').textContent = high_high;
         document.getElementById('cm_support_high').textContent = sup_high;
 
+        // Update Top Card sub-counters (Bahaya Terdeteksi & False Alarm)
+        document.getElementById('xgbTpCount').textContent = high_high;
+        document.getElementById('xgbFpCount').textContent = low_high;
+
         const pred_low = low_low + med_low + high_low;
         const pred_med = low_med + med_med + high_med;
         const pred_high = low_high + med_high + high_high;
