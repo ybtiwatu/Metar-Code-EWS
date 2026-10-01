@@ -771,9 +771,29 @@ class GoogleSheetHandler:
         _clean_val("actual_qnh", [(50000, 100.0), (5000, 10.0)])
         _clean_val("pred_qnh_30m", [(50000, 100.0), (5000, 10.0)])
 
-        # Angin: rentang wajar 0 sampai 80 kt
+        # Angin: rentang wajar 0 sampai 40 kt di bandara WARR
         _clean_val("actual_wind", [(500, 100.0), (70, 10.0)])
-        _clean_val("pred_wind_30m", [(500, 100.0), (70, 10.0)])
+        _clean_val("pred_wind_30m", [(500, 100.0)])
+        _clean_val("pred_wind_60m", [(500, 100.0)])
+
+        # Koreksi desimal 10x pada prediksi angin historis jika aktual normal
+        def _to_float(v):
+            if v is None or v == "":
+                return None
+            try:
+                fv = float(v)
+                return fv if math.isfinite(fv) else None
+            except (TypeError, ValueError):
+                return None
+
+        act_w = _to_float(cleaned.get("actual_wind"))
+        for p_key in ("pred_wind_30m", "pred_wind_60m"):
+            val_w = _to_float(cleaned.get(p_key))
+            if val_w is not None:
+                if (act_w is not None and act_w < 20.0 and val_w >= 20.0) or val_w >= 28.0:
+                    cleaned[p_key] = round(val_w / 10.0, 2)
+                else:
+                    cleaned[p_key] = round(val_w, 2)
 
         # XGBoost Probabilitas & Confidence
         _clean_val("xgb_danger_prob", [(100, 100.0)])
@@ -787,6 +807,8 @@ class GoogleSheetHandler:
                 cleaned["err_qnh_30m"] = round(abs(float(cleaned["actual_qnh"]) - float(cleaned["pred_qnh_30m"])), 2)
             if cleaned.get("actual_wind") is not None and cleaned.get("pred_wind_30m") is not None:
                 cleaned["err_wind_30m"] = round(abs(float(cleaned["actual_wind"]) - float(cleaned["pred_wind_30m"])), 2)
+            if cleaned.get("actual_wind") is not None and cleaned.get("pred_wind_60m") is not None:
+                cleaned["err_wind_60m"] = round(abs(float(cleaned["actual_wind"]) - float(cleaned["pred_wind_60m"])), 2)
             if cleaned.get("actual_dew") is not None and cleaned.get("pred_dew_30m") is not None:
                 cleaned["err_dew_30m"] = round(abs(float(cleaned["actual_dew"]) - float(cleaned["pred_dew_30m"])), 2)
         except Exception:

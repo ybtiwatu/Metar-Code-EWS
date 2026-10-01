@@ -81,7 +81,17 @@ def predict_metar_lstm(sequence_10x4):
 
     results = {}
     for i, feat in enumerate(weights["features"]):
-        results[str(feat)] = float(y_pred[i])
+        val = float(y_pred[i])
+        # Physical meteorological bounds
+        if feat == "kec_angin_kt":
+            val = max(0.0, min(40.0, val))
+        elif feat == "suhu_c":
+            val = max(15.0, min(45.0, val))
+        elif feat == "qnh_hpa":
+            val = max(980.0, min(1040.0, val))
+        elif feat == "dew_point_c":
+            val = max(10.0, min(35.0, val))
+        results[str(feat)] = val
     return results
 
 
