@@ -360,8 +360,8 @@
 
     <!-- Main Content Container (Hidden until loaded) -->
     <div id="comparisonContent" class="hidden">
-        <!-- 4 Top Executive Summary KPI Cards -->
-        <div class="grid grid-cols-1 gap-md sm:grid-cols-2 lg:grid-cols-4 mb-md">
+        <!-- 5 Top Executive Summary KPI Cards -->
+        <div class="grid grid-cols-1 gap-md sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 mb-md">
             <!-- XGBoost Accuracy Card -->
             <div class="card tool-metric-card" style="border-top: 4px solid #f59e0b;">
                 <div class="tool-metric-header">
@@ -420,6 +420,21 @@
                 </div>
                 <div style="font-size: 0.8rem; color: var(--text-secondary); border-top: 1px solid var(--border-color); padding-top: 6px;">
                     Deviasi prediksi +30m terhadap angin aktual
+                </div>
+            </div>
+
+            <!-- LSTM Dew Point MAE Card -->
+            <div class="card tool-metric-card" style="border-top: 4px solid #0284c7;">
+                <div class="tool-metric-header">
+                    <span class="tool-metric-label">💧 LSTM: MAE Titik Embun</span>
+                    <span class="tool-counter-badge" style="background: rgba(2, 132, 199, 0.12); color: #0284c7;">Error Rata-rata</span>
+                </div>
+                <div style="margin: 8px 0;">
+                    <h3 style="font-size: 1.8rem; font-weight: 800; margin: 0; color: #0284c7;" id="lstmMaeDewVal">-- °C</h3>
+                    <small class="text-muted" id="lstmRmseDew">RMSE: -- °C</small>
+                </div>
+                <div style="font-size: 0.8rem; color: var(--text-secondary); border-top: 1px solid var(--border-color); padding-top: 6px;">
+                    Deviasi prediksi +30m terhadap titik embun
                 </div>
             </div>
         </div>
@@ -1073,6 +1088,10 @@
             document.getElementById('lstmMaeWindVal').textContent = lstm.kecepatan_angin_kt.mae !== null ? `± ${lstm.kecepatan_angin_kt.mae} kt` : '-- kt';
             document.getElementById('lstmRmseWind').textContent = lstm.kecepatan_angin_kt.rmse !== null ? `RMSE: ${lstm.kecepatan_angin_kt.rmse} kt (+60m)` : 'RMSE: -- kt';
         }
+        if (lstm.dew_point_c) {
+            document.getElementById('lstmMaeDewVal').textContent = lstm.dew_point_c.mae !== null ? `± ${lstm.dew_point_c.mae} °C` : '-- °C';
+            document.getElementById('lstmRmseDew').textContent = lstm.dew_point_c.rmse !== null ? `RMSE: ${lstm.dew_point_c.rmse} °C (+60m)` : 'RMSE: -- °C';
+        }
 
         // Render 3x3 Confusion Matrix
         const cm = xgb.confusion_matrix || {};
@@ -1180,6 +1199,22 @@
         }
 
         if (lstm) {
+            if (!summaryData || !summaryData.lstm_regression) {
+                const m30 = lstm.metrics && lstm.metrics.mae_30m;
+                const r60 = lstm.metrics && lstm.metrics.rmse_1h;
+                if (m30) {
+                    if (m30.suhu_c !== undefined) document.getElementById('lstmMaeTempVal').textContent = `± ${m30.suhu_c} °C`;
+                    if (m30.qnh_hpa !== undefined) document.getElementById('lstmMaeQnhVal').textContent = `± ${m30.qnh_hpa} hPa`;
+                    if (m30.kec_angin_kt !== undefined) document.getElementById('lstmMaeWindVal').textContent = `± ${m30.kec_angin_kt} kt`;
+                    if (m30.dew_point_c !== undefined) document.getElementById('lstmMaeDewVal').textContent = `± ${m30.dew_point_c} °C`;
+                }
+                if (r60) {
+                    if (r60.suhu_c !== undefined) document.getElementById('lstmRmseTemp').textContent = `RMSE: ${r60.suhu_c} °C (+60m)`;
+                    if (r60.qnh_hpa !== undefined) document.getElementById('lstmRmseQnh').textContent = `RMSE: ${r60.qnh_hpa} hPa (+60m)`;
+                    if (r60.kec_angin_kt !== undefined) document.getElementById('lstmRmseWind').textContent = `RMSE: ${r60.kec_angin_kt} kt (+60m)`;
+                    if (r60.dew_point_c !== undefined) document.getElementById('lstmRmseDew').textContent = `RMSE: ${r60.dew_point_c} °C (+60m)`;
+                }
+            }
             renderLstmSection(lstm);
         }
 

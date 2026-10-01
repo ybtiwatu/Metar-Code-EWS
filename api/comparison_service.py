@@ -83,8 +83,7 @@ def _safe_float(val: Any) -> Optional[float]:
     if "," in s and "." not in s:
         s = s.replace(",", ".")
     elif s.count(".") > 1:
-        parts = s.split(".")
-        s = "".join(parts[:-1]) + "." + parts[-1]
+        s = s.replace(".", "")
     elif "," in s and "." in s:
         if s.rfind(",") > s.rfind("."):
             s = s.replace(".", "").replace(",", ".")
@@ -427,7 +426,7 @@ class ComparisonService:
 
         for _, row in merged_lstm.iterrows():
             p_suhu = _clean_val(row.get("lstm_pred_suhu_60m_donor") or row.get("lstm_pred_suhu_60m"), [(500, 100.0), (60, 10.0)])
-            p_angin = _clean_val(row.get("lstm_pred_angin_60m_donor") or row.get("lstm_pred_angin_60m"), [(500, 100.0)])
+            p_angin = _clean_val(row.get("lstm_pred_angin_60m_donor") or row.get("lstm_pred_angin_60m"), [(500, 100.0), (70, 10.0)])
             p_qnh = _clean_val(row.get("lstm_pred_qnh_60m_donor") or row.get("lstm_pred_qnh_60m"), [(50000, 100.0), (5000, 10.0)])
             p_dew = _clean_val(row.get("lstm_pred_dew_60m_donor") or row.get("lstm_pred_dew_60m"), [(500, 100.0), (60, 10.0)])
 
@@ -435,12 +434,6 @@ class ComparisonService:
             act_angin = _clean_val(row.get("kecepatan_angin_aktual"), [(500, 100.0), (70, 10.0)])
             act_qnh = _clean_val(row.get("qnh_aktual"), [(50000, 100.0), (5000, 10.0)])
             act_dew = _clean_val(row.get("dew_point_aktual") or row.get("dew_aktual"), [(500, 100.0), (60, 10.0)])
-
-            # Koreksi desimal 10x pada prediksi angin jika aktual normal
-            if p_angin is not None:
-                if (act_angin is not None and act_angin < 20.0 and p_angin >= 20.0) or p_angin >= 28.0:
-                    p_angin = round(p_angin / 10.0, 2)
-                p_angin = max(0.0, min(40.0, p_angin))
 
             valid_step = False
             if pd.notna(act_suhu) and pd.notna(p_suhu):
@@ -532,25 +525,19 @@ class ComparisonService:
                 else:
                     m_type = "FN"
 
-                a_wind = _clean_val(row.get("kecepatan_angin_aktual"), [(500, 100.0), (70, 10.0)])
-                p_wind_60 = _clean_val(row.get("lstm_pred_angin_60m_donor") or row.get("lstm_pred_angin_60m"), [(500, 100.0)])
-                if p_wind_60 is not None:
-                    if (a_wind is not None and a_wind < 20.0 and p_wind_60 >= 20.0) or p_wind_60 >= 28.0:
-                        p_wind_60 = round(p_wind_60 / 10.0, 2)
-                    p_wind_60 = max(0.0, min(40.0, p_wind_60))
+                p_temp_60 = _clean_val(row.get("lstm_pred_suhu_60m_donor") or row.get("lstm_pred_suhu_60m"), [(500, 100.0), (60, 10.0)])
+                p_qnh_60 = _clean_val(row.get("lstm_pred_qnh_60m_donor") or row.get("lstm_pred_qnh_60m"), [(50000, 100.0), (5000, 10.0)])
+                p_wind_60 = _clean_val(row.get("lstm_pred_angin_60m_donor") or row.get("lstm_pred_angin_60m"), [(500, 100.0), (70, 10.0)])
                 p_dew_60 = _clean_val(row.get("lstm_pred_dew_60m_donor") or row.get("lstm_pred_dew_60m"), [(500, 100.0), (60, 10.0)])
 
                 p_temp_30 = _clean_val(row.get("lstm_pred_suhu_30m"), [(500, 100.0), (60, 10.0)]) or p_temp_60
                 p_qnh_30 = _clean_val(row.get("lstm_pred_qnh_30m"), [(50000, 100.0), (5000, 10.0)]) or p_qnh_60
-                p_wind_30 = _clean_val(row.get("lstm_pred_angin_30m"), [(500, 100.0)]) or p_wind_60
-                if p_wind_30 is not None:
-                    if (a_wind is not None and a_wind < 20.0 and p_wind_30 >= 20.0) or p_wind_30 >= 28.0:
-                        p_wind_30 = round(p_wind_30 / 10.0, 2)
-                    p_wind_30 = max(0.0, min(40.0, p_wind_30))
+                p_wind_30 = _clean_val(row.get("lstm_pred_angin_30m"), [(500, 100.0), (70, 10.0)]) or p_wind_60
                 p_dew_30 = _clean_val(row.get("lstm_pred_dew_30m"), [(500, 100.0), (60, 10.0)]) or p_dew_60
 
                 a_temp = _clean_val(row.get("suhu_aktual"), [(500, 100.0), (60, 10.0)])
                 a_qnh = _clean_val(row.get("qnh_aktual"), [(50000, 100.0), (5000, 10.0)])
+                a_wind = _clean_val(row.get("kecepatan_angin_aktual"), [(500, 100.0), (70, 10.0)])
                 a_dew = _clean_val(row.get("dew_point_aktual"), [(500, 100.0), (60, 10.0)])
 
                 comp_records_to_save.append({
@@ -651,9 +638,9 @@ class ComparisonService:
             if (sae_suhu / n_lstm) > 20.0:
                 sae_suhu /= 100.0
                 sse_suhu /= 10000.0
-            if (sae_angin / n_lstm) > 6.0:
-                sae_angin /= 10.0
-                sse_angin /= 100.0
+            if (sae_angin / n_lstm) > 20.0:
+                sae_angin /= 100.0
+                sse_angin /= 10000.0
             if (sae_qnh / n_lstm) > 20.0:
                 sae_qnh /= 100.0
                 sse_qnh /= 10000.0
@@ -845,20 +832,11 @@ class ComparisonService:
                 acc[f"cm_{a.lower()}_{p.lower()}"] = 0
 
         for r in records:
-            r_n = int(r.get("total_samples_lstm") or 0)
-            r_sae_w = _safe_float(r.get("sum_abs_error_angin")) or 0.0
-            r_sse_w = _safe_float(r.get("sum_sq_error_angin")) or 0.0
-
-            # Defensive normalization: perbaiki error desimal 10x pada row ringkasan
-            if r_n > 0 and (r_sae_w / r_n) > 5.0:
-                r_sae_w /= 10.0
-                r_sse_w /= 100.0
-
-            acc["total_samples_lstm"] += r_n
+            acc["total_samples_lstm"] += int(r.get("total_samples_lstm") or 0)
             acc["sum_abs_error_suhu"] += _safe_float(r.get("sum_abs_error_suhu")) or 0.0
             acc["sum_sq_error_suhu"] += _safe_float(r.get("sum_sq_error_suhu")) or 0.0
-            acc["sum_abs_error_angin"] += r_sae_w
-            acc["sum_sq_error_angin"] += r_sse_w
+            acc["sum_abs_error_angin"] += _safe_float(r.get("sum_abs_error_angin")) or 0.0
+            acc["sum_sq_error_angin"] += _safe_float(r.get("sum_sq_error_angin")) or 0.0
             acc["sum_abs_error_qnh"] += _safe_float(r.get("sum_abs_error_qnh")) or 0.0
             acc["sum_sq_error_qnh"] += _safe_float(r.get("sum_sq_error_qnh")) or 0.0
             acc["sum_abs_error_dew"] += _safe_float(r.get("sum_abs_error_dew")) or 0.0

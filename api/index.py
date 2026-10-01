@@ -2316,12 +2316,7 @@ def build_comparison_response_from_records(records, station="WARR", period="toda
         err_qnh = round(abs(act_qnh - pred_qnh), 2) if (act_qnh is not None and pred_qnh is not None) else _safe_float(r.get("err_qnh_30m"))
 
         act_wind = _scale_fix(_safe_float(r.get("actual_wind")), [(500, 100.0), (70, 10.0)])
-        raw_pw30 = _safe_float(r.get("pred_wind_30m"))
-        if raw_pw30 is not None:
-            if (act_wind is not None and act_wind < 20.0 and raw_pw30 >= 20.0) or raw_pw30 >= 28.0:
-                raw_pw30 = raw_pw30 / 10.0
-            raw_pw30 = max(0.0, min(40.0, raw_pw30))
-        pred_wind = _scale_fix(raw_pw30, [(500, 100.0)])
+        pred_wind = _scale_fix(_safe_float(r.get("pred_wind_30m")), [(500, 100.0), (70, 10.0)])
         err_wind = round(abs(act_wind - pred_wind), 2) if (act_wind is not None and pred_wind is not None) else _safe_float(r.get("err_wind_30m"))
 
         act_dew = _scale_fix(_safe_float(r.get("actual_dew")), [(500, 100.0), (60, 10.0)])
@@ -2331,12 +2326,7 @@ def build_comparison_response_from_records(records, station="WARR", period="toda
         # Ekstraksi Prediksi +60m / +1 Jam (Langkah 2)
         pred_temp_1h = _scale_fix(_safe_float(r.get("pred_temp_60m") or r.get("pred_temp_1h")), [(500, 100.0), (60, 10.0)])
         pred_qnh_1h = _scale_fix(_safe_float(r.get("pred_qnh_60m") or r.get("pred_qnh_1h")), [(50000, 100.0), (5000, 10.0)])
-        raw_pw60 = _safe_float(r.get("pred_wind_60m") or r.get("pred_wind_1h"))
-        if raw_pw60 is not None:
-            if (act_wind is not None and act_wind < 20.0 and raw_pw60 >= 20.0) or raw_pw60 >= 28.0:
-                raw_pw60 = raw_pw60 / 10.0
-            raw_pw60 = max(0.0, min(40.0, raw_pw60))
-        pred_wind_1h = _scale_fix(raw_pw60, [(500, 100.0)])
+        pred_wind_1h = _scale_fix(_safe_float(r.get("pred_wind_60m") or r.get("pred_wind_1h")), [(500, 100.0), (70, 10.0)])
         pred_dew_1h = _scale_fix(_safe_float(r.get("pred_dew_60m") or r.get("pred_dew_1h")), [(500, 100.0), (60, 10.0)])
 
         # Proyeksi autoregresif fallback jika row historis belum menyimpan kolom 60m
@@ -2348,8 +2338,7 @@ def build_comparison_response_from_records(records, station="WARR", period="toda
             pred_qnh_1h = round(pred_qnh + drift, 2)
         if pred_wind_1h is None and pred_wind is not None:
             drift = (pred_wind - chart_pred_wind_30m[-1]) * 0.4 if (chart_pred_wind_30m and chart_pred_wind_30m[-1] is not None) else 0.0
-            drift = max(-4.0, min(4.0, drift))
-            pred_wind_1h = max(0.0, min(40.0, round(pred_wind + drift, 2)))
+            pred_wind_1h = max(0.0, round(pred_wind + drift, 2))
         if pred_dew_1h is None and pred_dew is not None:
             drift = (pred_dew - chart_pred_dew_30m[-1]) * 0.4 if (chart_pred_dew_30m and chart_pred_dew_30m[-1] is not None) else 0.0
             pred_dew_1h = round(pred_dew + drift, 2)
